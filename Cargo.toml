@@ -1,0 +1,7 @@
+[workspace]
+
+members = [
+    "sql_lsp",
+    "sql_parser",
+    "sql_repl"
+]
