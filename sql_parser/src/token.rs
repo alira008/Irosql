@@ -1,12 +1,13 @@
 use crate::keywords;
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum TokenType {
     Ident(Identifier),
     Keyword(keywords::Keyword),
     Number(f64),
     QuotedString(String),
 
+    WhiteSpace(WhiteSpace),
     Asterisk,
     Comma,
     LeftParen,
@@ -34,8 +35,16 @@ pub enum TokenType {
     Eof,
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum WhiteSpace {
+    Space,
+    Tab,
+    NewLine,
+    CarriageReturn,
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub struct Identifier {
     pub value: String,
-    pub quote_style: Option<char>
+    pub quote_style: Option<char>,
 }

@@ -1,5 +1,5 @@
 use crate::keywords;
-use crate::token::{Identifier, TokenType};
+use crate::token::{Identifier, TokenType, WhiteSpace};
 
 pub struct Lexer<'a> {
     input: &'a str,
@@ -124,6 +124,16 @@ impl<'a> Lexer<'a> {
                 '{' => TokenType::LeftBrace,
                 '}' => TokenType::RightBrace,
                 '~' => TokenType::Tilde,
+                '\n' => TokenType::WhiteSpace(WhiteSpace::NewLine),
+                '\r' => match self.peak_char() {
+                    Some('\n') => {
+                        self.read_char();
+                        TokenType::WhiteSpace(WhiteSpace::CarriageReturn)
+                    }
+                    _ => TokenType::WhiteSpace(WhiteSpace::CarriageReturn),
+                },
+                '\t' => TokenType::WhiteSpace(WhiteSpace::Tab),
+                ' ' => TokenType::WhiteSpace(WhiteSpace::Space),
                 _ => {
                     if ch.is_alphabetic() {
                         // Read the identifier until the next non-alphabetic character
@@ -170,6 +180,16 @@ impl<'a> Lexer<'a> {
         while self.ch.is_some() && self.ch.unwrap().is_numeric() {
             self.read_char();
         }
+
+        // check if the number has a period
+        // aka number is a float
+        if self.ch == Some('.') {
+            self.read_char();
+            while self.ch.is_some() && self.ch.unwrap().is_numeric() {
+                self.read_char();
+            }
+        }
+
         self.input[start..self.current_position]
             .parse::<f64>()
             .unwrap()
@@ -178,7 +198,7 @@ impl<'a> Lexer<'a> {
 
 #[cfg(test)]
 mod tests {
-    use super::TokenType::*;
+    use super::WhiteSpace;
     use super::*;
 
     #[test]
@@ -193,16 +213,20 @@ mod tests {
 
         let expected_tokens = vec![
             TokenType::Keyword(keywords::Keyword::SELECT),
+            TokenType::WhiteSpace(WhiteSpace::Space),
             TokenType::Ident(Identifier {
                 value: "name".to_string(),
                 quote_style: None,
             }),
             TokenType::Comma,
+            TokenType::WhiteSpace(WhiteSpace::Space),
             TokenType::Ident(Identifier {
                 value: "id".to_string(),
                 quote_style: None,
             }),
+            TokenType::WhiteSpace(WhiteSpace::Space),
             TokenType::Keyword(keywords::Keyword::FROM),
+            TokenType::WhiteSpace(WhiteSpace::Space),
             TokenType::Ident(Identifier {
                 value: "users".to_string(),
                 quote_style: None,
@@ -224,16 +248,20 @@ mod tests {
 
         let expected_tokens = vec![
             TokenType::Keyword(keywords::Keyword::SELECT),
+            TokenType::WhiteSpace(WhiteSpace::Space),
             TokenType::Ident(Identifier {
                 value: "name".to_string(),
                 quote_style: Some('['),
             }),
             TokenType::Comma,
+            TokenType::WhiteSpace(WhiteSpace::Space),
             TokenType::Ident(Identifier {
                 value: "id".to_string(),
                 quote_style: None,
             }),
+            TokenType::WhiteSpace(WhiteSpace::Space),
             TokenType::Keyword(keywords::Keyword::FROM),
+            TokenType::WhiteSpace(WhiteSpace::Space),
             TokenType::Ident(Identifier {
                 value: "users".to_string(),
                 quote_style: None,
@@ -255,18 +283,24 @@ mod tests {
 
         let expected_tokens = vec![
             TokenType::Keyword(keywords::Keyword::SELECT),
+            TokenType::WhiteSpace(WhiteSpace::Space),
             TokenType::Ident(Identifier {
                 value: "name".to_string(),
                 quote_style: None,
             }),
+            TokenType::WhiteSpace(WhiteSpace::Space),
             TokenType::Keyword(keywords::Keyword::AS),
+            TokenType::WhiteSpace(WhiteSpace::Space),
             TokenType::QuotedString("SuperName".to_string()),
             TokenType::Comma,
+            TokenType::WhiteSpace(WhiteSpace::Space),
             TokenType::Ident(Identifier {
                 value: "id".to_string(),
                 quote_style: None,
             }),
+            TokenType::WhiteSpace(WhiteSpace::Space),
             TokenType::Keyword(keywords::Keyword::FROM),
+            TokenType::WhiteSpace(WhiteSpace::Space),
             TokenType::Ident(Identifier {
                 value: "users".to_string(),
                 quote_style: None,
