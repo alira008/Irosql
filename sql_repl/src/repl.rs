@@ -1,8 +1,11 @@
+use std::io::Write;
+
 const PROMPT: &str = ">> ";
 
 pub fn start(stdin: &std::io::Stdin) {
     loop {
         print!("{}", PROMPT);
+        std::io::stdout().flush().unwrap();
         let mut input = String::new();
         stdin.read_line(&mut input).unwrap();
         if input.trim() == "exit" {
