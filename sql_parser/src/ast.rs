@@ -1,11 +1,11 @@
-use crate::token::{TokenType, Identifier};
+use crate::token::Token;
 
 pub struct Query {
     pub statements: Vec<Statement>,
 }
 
 pub enum Expression {
-    Identifier(Identifier),
+    Identifier(String),
     Number(f64),
     QuotedString(String),
 }
@@ -23,14 +23,14 @@ impl Query {
 }
 
 pub struct SelectStatement {
-    pub token: TokenType, // the token::TokenType::SELECT
+    pub token: Token, // the token::TokenType::SELECT
     pub columns: Vec<Expression>,
     pub table: Vec<Expression>,
     pub where_clause: Option<Expression>,
 }
 
 impl SelectStatement {
-    pub fn new(token: TokenType) -> Self {
+    pub fn new(token: Token) -> Self {
         SelectStatement {
             token,
             columns: vec![],

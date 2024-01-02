@@ -14,7 +14,7 @@ pub fn start(stdin: &std::io::Stdin) {
         let mut lexer = sql_parser::lexer::Lexer::new(&input);
         loop {
             let token = lexer.next_token();
-            if token == sql_parser::token::TokenType::Eof {
+            if token.kind == sql_parser::token::Kind::Eof {
                 break;
             }
             println!("{:?}", token);

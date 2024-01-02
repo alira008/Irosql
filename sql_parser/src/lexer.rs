@@ -1,6 +1,7 @@
 use crate::keywords;
-use crate::token::{Identifier, TokenType, WhiteSpace};
+use crate::token::{Kind, Token};
 
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Lexer<'a> {
     input: &'a str,
     current_position: usize, // current position in input (points to current char)
@@ -42,98 +43,161 @@ impl<'a> Lexer<'a> {
         }
     }
 
-    pub fn next_token(&mut self) -> TokenType {
+    pub fn next_token(&mut self) -> Token {
         self.skip_whitespace();
 
         let token = match self.ch {
             Some(ch) => match ch {
-                ',' => TokenType::Comma,
-                '(' => TokenType::LeftParen,
-                ')' => TokenType::RightParen,
-                '*' => TokenType::Asterisk,
+                ',' => Token {
+                    kind: Kind::Comma,
+                    literal: ",".to_string(),
+                },
+                '(' => Token {
+                    kind: Kind::LeftParen,
+                    literal: "(".to_string(),
+                },
+                ')' => Token {
+                    kind: Kind::RightParen,
+                    literal: ")".to_string(),
+                },
+                '*' => Token {
+                    kind: Kind::Ident,
+                    literal: "*".to_string(),
+                },
                 '=' => {
                     if self.peak_char() == Some('=') {
                         self.read_char();
-                        TokenType::DoubleEqual
+                        Token {
+                            kind: Kind::DoubleEqual,
+                            literal: "==".to_string(),
+                        }
                     } else {
-                        TokenType::Equal
+                        Token {
+                            kind: Kind::Equal,
+                            literal: "=".to_string(),
+                        }
                     }
                 }
                 '!' => {
                     if self.peak_char() == Some('=') {
                         self.read_char();
-                        TokenType::NotEqual
+                        Token {
+                            kind: Kind::NotEqual,
+                            literal: "!=".to_string(),
+                        }
                     } else {
-                        TokenType::ExclamationMark
+                        Token {
+                            kind: Kind::ExclamationMark,
+                            literal: "!".to_string(),
+                        }
                     }
                 }
                 '<' => {
                     if self.peak_char() == Some('=') {
                         self.read_char();
-                        TokenType::LessThanEqual
+                        Token {
+                            kind: Kind::LessThanEqual,
+                            literal: "<=".to_string(),
+                        }
                     } else {
-                        TokenType::LessThan
+                        Token {
+                            kind: Kind::LessThan,
+                            literal: "<".to_string(),
+                        }
                     }
                 }
                 '>' => {
                     if self.peak_char() == Some('=') {
                         self.read_char();
-                        TokenType::GreaterThanEqual
+                        Token {
+                            kind: Kind::GreaterThanEqual,
+                            literal: ">=".to_string(),
+                        }
                     } else {
-                        TokenType::GreaterThan
+                        Token {
+                            kind: Kind::GreaterThan,
+                            literal: ">".to_string(),
+                        }
                     }
                 }
-                '+' => TokenType::Plus,
-                '-' => TokenType::Minus,
-                '/' => TokenType::Divide,
-                '%' => TokenType::Mod,
-                '.' => TokenType::Period,
-                ';' => TokenType::SemiColon,
+                '+' => Token {
+                    kind: Kind::Plus,
+                    literal: "+".to_string(),
+                },
+                '-' => Token {
+                    kind: Kind::Minus,
+                    literal: "-".to_string(),
+                },
+                '/' => Token {
+                    kind: Kind::Divide,
+                    literal: "/".to_string(),
+                },
+                '%' => Token {
+                    kind: Kind::Mod,
+                    literal: "%".to_string(),
+                },
+                '.' => Token {
+                    kind: Kind::Period,
+                    literal: ".".to_string(),
+                },
+                ';' => Token {
+                    kind: Kind::SemiColon,
+                    literal: ";".to_string(),
+                },
                 '[' => {
                     let peaked_char = self.peak_char();
                     if peaked_char.is_some_and(|c| c.is_alphabetic()) {
                         // Read the identifier until the next non-alphabetic character
                         // We should be reading until the next ']'
-                        self.read_char();
-                        let ident = self.read_ident();
-                        if self.ch == Some(']') {
-                            self.read_char();
-                            return TokenType::Ident(Identifier {
-                                value: ident,
-                                quote_style: Some('['),
-                            });
+                        if let Some(ident) = self.read_quoted_ident('[') {
+                            return Token {
+                                kind: Kind::Ident,
+                                literal: ident,
+                            };
                         } else {
-                            return TokenType::Illegal;
+                            Token {
+                                kind: Kind::Illegal,
+                                literal: "".to_string(),
+                            }
                         }
                     } else {
-                        TokenType::LeftBracket
+                        Token {
+                            kind: Kind::LeftBracket,
+                            literal: "[".to_string(),
+                        }
                     }
                 }
-                ']' => TokenType::RightBracket,
-                '\'' => {
-                    self.read_char();
-                    // Read the string until the next single quote
-                    let start = self.current_position;
-                    while self.ch.is_some() && self.ch.unwrap() != '\'' {
-                        self.read_char();
-                    }
-                    let value = self.input[start..self.current_position].to_string();
-                    self.read_char();
-                    return TokenType::QuotedString(value);
-                }
-                '{' => TokenType::LeftBrace,
-                '}' => TokenType::RightBrace,
-                '~' => TokenType::Tilde,
-                '\n' => TokenType::WhiteSpace(WhiteSpace::NewLine),
-                '\r' => match self.peak_char() {
-                    Some('\n') => {
-                        self.read_char();
-                        TokenType::WhiteSpace(WhiteSpace::CarriageReturn)
-                    }
-                    _ => TokenType::WhiteSpace(WhiteSpace::CarriageReturn),
+                ']' => Token {
+                    kind: Kind::RightBracket,
+                    literal: "]".to_string(),
                 },
-                '\t' => TokenType::WhiteSpace(WhiteSpace::Tab),
-                ' ' => TokenType::WhiteSpace(WhiteSpace::Space),
+                '\'' => {
+                    // Read the identifier until the next non-alphabetic character
+                    // We should be reading until the next '\''
+                    if let Some(ident) = self.read_quoted_ident('\'') {
+                        return Token {
+                            kind: Kind::Ident,
+                            literal: ident,
+                        };
+                    } else {
+                        Token {
+                            kind: Kind::Illegal,
+                            literal: "".to_string(),
+                        }
+                    }
+                }
+                '{' => Token {
+                    kind: Kind::LeftBrace,
+                    literal: "{".to_string(),
+                },
+                '}' => Token {
+                    kind: Kind::RightBrace,
+                    literal: "}".to_string(),
+                },
+                '~' => Token {
+                    kind: Kind::Tilde,
+                    literal: "~".to_string(),
+                },
                 _ => {
                     if ch.is_alphabetic() {
                         // Read the identifier until the next non-alphabetic character
@@ -141,20 +205,32 @@ impl<'a> Lexer<'a> {
                         // Check if the identifier is a keyword
                         // if it is the return the keyword token type
                         return match keywords::lookup_keyword(&ident) {
-                            Some(keyword) => TokenType::Keyword(keyword),
-                            None => TokenType::Ident(Identifier {
-                                value: ident,
-                                quote_style: None,
-                            }),
+                            Some(keyword) => Token {
+                                kind: Kind::Keyword(keyword),
+                                literal: ident,
+                            },
+                            None => Token {
+                                kind: Kind::Ident,
+                                literal: ident,
+                            },
                         };
                     } else if ch.is_numeric() {
-                        return TokenType::Number(self.read_number());
+                        Token {
+                            kind: Kind::Number,
+                            literal: self.read_number(),
+                        }
                     } else {
-                        TokenType::Illegal
+                        Token {
+                            kind: Kind::Illegal,
+                            literal: "".to_string(),
+                        }
                     }
                 }
             },
-            None => TokenType::Eof,
+            None => crate::token::Token {
+                kind: crate::token::Kind::Eof,
+                literal: "".to_string(),
+            },
         };
 
         self.read_char();
@@ -169,15 +245,41 @@ impl<'a> Lexer<'a> {
 
     fn read_ident(&mut self) -> String {
         let start = self.current_position;
-        while self.ch.is_some() && self.ch.unwrap().is_alphabetic() {
+        while self.ch.is_some_and(|ch| ch.is_alphabetic()) {
             self.read_char();
         }
         self.input[start..self.current_position].to_string()
     }
 
-    fn read_number(&mut self) -> f64 {
+    fn read_quoted_ident(&mut self, quote_char: char) -> Option<String> {
+        // Read the string until the next single quote
+        // current position is at the quote character
         let start = self.current_position;
-        while self.ch.is_some() && self.ch.unwrap().is_numeric() {
+        match quote_char {
+            '[' => {
+                while self.ch.is_some_and(|ch| ch != ']') {
+                    self.read_char();
+                }
+                // read the closing bracket
+                self.read_char();
+                Some(self.input[start..self.current_position].to_string())
+            }
+            '\'' => {
+                self.read_char();
+                while self.ch.is_some_and(|ch| ch != '\'') {
+                    self.read_char();
+                }
+                // read the closing quote
+                self.read_char();
+                Some(self.input[start..self.current_position].to_string())
+            }
+            _ => None,
+        }
+    }
+
+    fn read_number(&mut self) -> String {
+        let start = self.current_position;
+        while self.ch.is_some_and(|ch| ch.is_numeric()) {
             self.read_char();
         }
 
@@ -185,21 +287,19 @@ impl<'a> Lexer<'a> {
         // aka number is a float
         if self.ch == Some('.') {
             self.read_char();
-            while self.ch.is_some() && self.ch.unwrap().is_numeric() {
+            while self.ch.is_some_and(|ch| ch.is_numeric()) {
                 self.read_char();
             }
         }
 
-        self.input[start..self.current_position]
-            .parse::<f64>()
-            .unwrap()
+        self.input[start..self.current_position].to_string()
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::WhiteSpace;
     use super::*;
+    use super::keywords::Keyword;
 
     #[test]
     fn test_identifiers_unquoted() {
@@ -212,25 +312,30 @@ mod tests {
         }
 
         let expected_tokens = vec![
-            TokenType::Keyword(keywords::Keyword::SELECT),
-            TokenType::WhiteSpace(WhiteSpace::Space),
-            TokenType::Ident(Identifier {
-                value: "name".to_string(),
-                quote_style: None,
-            }),
-            TokenType::Comma,
-            TokenType::WhiteSpace(WhiteSpace::Space),
-            TokenType::Ident(Identifier {
-                value: "id".to_string(),
-                quote_style: None,
-            }),
-            TokenType::WhiteSpace(WhiteSpace::Space),
-            TokenType::Keyword(keywords::Keyword::FROM),
-            TokenType::WhiteSpace(WhiteSpace::Space),
-            TokenType::Ident(Identifier {
-                value: "users".to_string(),
-                quote_style: None,
-            }),
+            Token {
+                kind: Kind::Keyword(Keyword::SELECT),
+                literal: "select".to_string(),
+            },
+            Token {
+                kind: Kind::Ident,
+                literal: "name".to_string(),
+            },
+            Token {
+                kind: Kind::Comma,
+                literal: ",".to_string(),
+            },
+            Token {
+                kind: Kind::Ident,
+                literal: "id".to_string(),
+            },
+            Token {
+                kind: Kind::Keyword(Keyword::FROM),
+                literal: "from".to_string(),
+            },
+            Token {
+                kind: Kind::Ident,
+                literal: "users".to_string(),
+            },
         ];
 
         assert_eq!(expected_tokens, tokens);
@@ -247,25 +352,30 @@ mod tests {
         }
 
         let expected_tokens = vec![
-            TokenType::Keyword(keywords::Keyword::SELECT),
-            TokenType::WhiteSpace(WhiteSpace::Space),
-            TokenType::Ident(Identifier {
-                value: "name".to_string(),
-                quote_style: Some('['),
-            }),
-            TokenType::Comma,
-            TokenType::WhiteSpace(WhiteSpace::Space),
-            TokenType::Ident(Identifier {
-                value: "id".to_string(),
-                quote_style: None,
-            }),
-            TokenType::WhiteSpace(WhiteSpace::Space),
-            TokenType::Keyword(keywords::Keyword::FROM),
-            TokenType::WhiteSpace(WhiteSpace::Space),
-            TokenType::Ident(Identifier {
-                value: "users".to_string(),
-                quote_style: None,
-            }),
+            Token {
+                kind: Kind::Keyword(Keyword::SELECT),
+                literal: "select".to_string(),
+            },
+            Token {
+                kind: Kind::Ident,
+                literal: "[name]".to_string(),
+            },
+            Token {
+                kind: Kind::Comma,
+                literal: ",".to_string(),
+            },
+            Token {
+                kind: Kind::Ident,
+                literal: "id".to_string(),
+            },
+            Token {
+                kind: Kind::Keyword(Keyword::FROM),
+                literal: "from".to_string(),
+            },
+            Token {
+                kind: Kind::Ident,
+                literal: "users".to_string(),
+            },
         ];
 
         assert_eq!(expected_tokens, tokens);
@@ -282,29 +392,38 @@ mod tests {
         }
 
         let expected_tokens = vec![
-            TokenType::Keyword(keywords::Keyword::SELECT),
-            TokenType::WhiteSpace(WhiteSpace::Space),
-            TokenType::Ident(Identifier {
-                value: "name".to_string(),
-                quote_style: None,
-            }),
-            TokenType::WhiteSpace(WhiteSpace::Space),
-            TokenType::Keyword(keywords::Keyword::AS),
-            TokenType::WhiteSpace(WhiteSpace::Space),
-            TokenType::QuotedString("SuperName".to_string()),
-            TokenType::Comma,
-            TokenType::WhiteSpace(WhiteSpace::Space),
-            TokenType::Ident(Identifier {
-                value: "id".to_string(),
-                quote_style: None,
-            }),
-            TokenType::WhiteSpace(WhiteSpace::Space),
-            TokenType::Keyword(keywords::Keyword::FROM),
-            TokenType::WhiteSpace(WhiteSpace::Space),
-            TokenType::Ident(Identifier {
-                value: "users".to_string(),
-                quote_style: None,
-            }),
+            Token {
+                kind: Kind::Keyword(Keyword::SELECT),
+                literal: "select".to_string(),
+            },
+            Token {
+                kind: Kind::Ident,
+                literal: "name".to_string(),
+            },
+            Token {
+                kind: Kind::Keyword(Keyword::AS),
+                literal: "as".to_string(),
+            },
+            Token {
+                kind: Kind::Ident,
+                literal: "'SuperName'".to_string(),
+            },
+            Token {
+                kind: Kind::Comma,
+                literal: ",".to_string(),
+            },
+            Token {
+                kind: Kind::Ident,
+                literal: "id".to_string(),
+            },
+            Token {
+                kind: Kind::Keyword(Keyword::FROM),
+                literal: "from".to_string(),
+            },
+            Token {
+                kind: Kind::Ident,
+                literal: "users".to_string(),
+            },
         ];
 
         assert_eq!(expected_tokens, tokens);
