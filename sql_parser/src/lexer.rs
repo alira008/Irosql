@@ -1,5 +1,5 @@
 use crate::keywords;
-use crate::token::{Kind, Token};
+use crate::token::{Kind, Literal, Token};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Lexer<'a> {
@@ -50,31 +50,31 @@ impl<'a> Lexer<'a> {
             Some(ch) => match ch {
                 ',' => Token {
                     kind: Kind::Comma,
-                    literal: ",".to_string(),
+                    literal: Literal::new_string(","),
                 },
                 '(' => Token {
                     kind: Kind::LeftParen,
-                    literal: "(".to_string(),
+                    literal: Literal::new_string("("),
                 },
                 ')' => Token {
                     kind: Kind::RightParen,
-                    literal: ")".to_string(),
+                    literal: Literal::new_string(")"),
                 },
                 '*' => Token {
                     kind: Kind::Ident,
-                    literal: "*".to_string(),
+                    literal: Literal::new_string("*"),
                 },
                 '=' => {
                     if self.peak_char() == Some('=') {
                         self.read_char();
                         Token {
                             kind: Kind::DoubleEqual,
-                            literal: "==".to_string(),
+                            literal: Literal::new_string("=="),
                         }
                     } else {
                         Token {
                             kind: Kind::Equal,
-                            literal: "=".to_string(),
+                            literal: Literal::new_string("="),
                         }
                     }
                 }
@@ -83,12 +83,12 @@ impl<'a> Lexer<'a> {
                         self.read_char();
                         Token {
                             kind: Kind::NotEqual,
-                            literal: "!=".to_string(),
+                            literal: Literal::new_string("!="),
                         }
                     } else {
                         Token {
                             kind: Kind::ExclamationMark,
-                            literal: "!".to_string(),
+                            literal: Literal::new_string("!"),
                         }
                     }
                 }
@@ -97,12 +97,12 @@ impl<'a> Lexer<'a> {
                         self.read_char();
                         Token {
                             kind: Kind::LessThanEqual,
-                            literal: "<=".to_string(),
+                            literal: Literal::new_string("<="),
                         }
                     } else {
                         Token {
                             kind: Kind::LessThan,
-                            literal: "<".to_string(),
+                            literal: Literal::new_string("<"),
                         }
                     }
                 }
@@ -111,38 +111,42 @@ impl<'a> Lexer<'a> {
                         self.read_char();
                         Token {
                             kind: Kind::GreaterThanEqual,
-                            literal: ">=".to_string(),
+                            literal: Literal::new_string(">="),
                         }
                     } else {
                         Token {
                             kind: Kind::GreaterThan,
-                            literal: ">".to_string(),
+                            literal: Literal::new_string(">"),
                         }
                     }
                 }
                 '+' => Token {
                     kind: Kind::Plus,
-                    literal: "+".to_string(),
+                    literal: Literal::new_string("+"),
                 },
                 '-' => Token {
                     kind: Kind::Minus,
-                    literal: "-".to_string(),
+                    literal: Literal::new_string("-"),
                 },
                 '/' => Token {
                     kind: Kind::Divide,
-                    literal: "/".to_string(),
+                    literal: Literal::new_string("/"),
+                },
+                '*' => Token {
+                    kind: Kind::Multiply,
+                    literal: Literal::new_string("*"),
                 },
                 '%' => Token {
                     kind: Kind::Mod,
-                    literal: "%".to_string(),
+                    literal: Literal::new_string("%"),
                 },
                 '.' => Token {
                     kind: Kind::Period,
-                    literal: ".".to_string(),
+                    literal: Literal::new_string("."),
                 },
                 ';' => Token {
                     kind: Kind::SemiColon,
-                    literal: ";".to_string(),
+                    literal: Literal::new_string(";"),
                 },
                 '[' => {
                     let peaked_char = self.peak_char();
@@ -152,24 +156,24 @@ impl<'a> Lexer<'a> {
                         if let Some(ident) = self.read_quoted_ident('[') {
                             return Token {
                                 kind: Kind::Ident,
-                                literal: ident,
+                                literal: Literal::String(ident),
                             };
                         } else {
                             Token {
                                 kind: Kind::Illegal,
-                                literal: "".to_string(),
+                                literal: Literal::new_string(""),
                             }
                         }
                     } else {
                         Token {
                             kind: Kind::LeftBracket,
-                            literal: "[".to_string(),
+                            literal: Literal::new_string("["),
                         }
                     }
                 }
                 ']' => Token {
                     kind: Kind::RightBracket,
-                    literal: "]".to_string(),
+                    literal: Literal::new_string("]"),
                 },
                 '\'' => {
                     // Read the identifier until the next non-alphabetic character
@@ -177,26 +181,26 @@ impl<'a> Lexer<'a> {
                     if let Some(ident) = self.read_quoted_ident('\'') {
                         return Token {
                             kind: Kind::Ident,
-                            literal: ident,
+                            literal: Literal::String(ident),
                         };
                     } else {
                         Token {
                             kind: Kind::Illegal,
-                            literal: "".to_string(),
+                            literal: Literal::new_string(""),
                         }
                     }
                 }
                 '{' => Token {
                     kind: Kind::LeftBrace,
-                    literal: "{".to_string(),
+                    literal: Literal::new_string("{"),
                 },
                 '}' => Token {
                     kind: Kind::RightBrace,
-                    literal: "}".to_string(),
+                    literal: Literal::new_string("}"),
                 },
                 '~' => Token {
                     kind: Kind::Tilde,
-                    literal: "~".to_string(),
+                    literal: Literal::new_string("~"),
                 },
                 _ => {
                     if ch.is_alphabetic() {
@@ -207,29 +211,36 @@ impl<'a> Lexer<'a> {
                         return match keywords::lookup_keyword(&ident) {
                             Some(keyword) => Token {
                                 kind: Kind::Keyword(keyword),
-                                literal: ident,
+                                literal: Literal::String(ident.to_uppercase()),
                             },
                             None => Token {
                                 kind: Kind::Ident,
-                                literal: ident,
+                                literal: Literal::String(ident),
                             },
                         };
                     } else if ch.is_numeric() {
-                        Token {
-                            kind: Kind::Number,
-                            literal: self.read_number(),
+                        if let Some(number) = self.read_number() {
+                            Token {
+                                kind: Kind::Number,
+                                literal: Literal::Number(number),
+                            }
+                        } else {
+                            Token {
+                                kind: Kind::Illegal,
+                                literal: Literal::new_string(""),
+                            }
                         }
                     } else {
                         Token {
                             kind: Kind::Illegal,
-                            literal: "".to_string(),
+                            literal: Literal::new_string(""),
                         }
                     }
                 }
             },
             None => crate::token::Token {
                 kind: crate::token::Kind::Eof,
-                literal: "".to_string(),
+                literal: Literal::new_string(""),
             },
         };
 
@@ -277,7 +288,7 @@ impl<'a> Lexer<'a> {
         }
     }
 
-    fn read_number(&mut self) -> String {
+    fn read_number(&mut self) -> Option<f64> {
         let start = self.current_position;
         while self.ch.is_some_and(|ch| ch.is_numeric()) {
             self.read_char();
@@ -292,14 +303,18 @@ impl<'a> Lexer<'a> {
             }
         }
 
-        self.input[start..self.current_position].to_string()
+        let str_val = self.input[start..self.current_position].to_string();
+        match str_val.parse::<f64>() {
+            Ok(num) => Some(num),
+            Err(_) => None,
+        }
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use super::keywords::Keyword;
+    use super::*;
 
     #[test]
     fn test_identifiers_unquoted() {
@@ -314,27 +329,27 @@ mod tests {
         let expected_tokens = vec![
             Token {
                 kind: Kind::Keyword(Keyword::SELECT),
-                literal: "select".to_string(),
+                literal: Literal::new_string("SELECT"),
             },
             Token {
                 kind: Kind::Ident,
-                literal: "name".to_string(),
+                literal: Literal::new_string("name"),
             },
             Token {
                 kind: Kind::Comma,
-                literal: ",".to_string(),
+                literal: Literal::new_string(","),
             },
             Token {
                 kind: Kind::Ident,
-                literal: "id".to_string(),
+                literal: Literal::new_string("id"),
             },
             Token {
                 kind: Kind::Keyword(Keyword::FROM),
-                literal: "from".to_string(),
+                literal: Literal::new_string("FROM"),
             },
             Token {
                 kind: Kind::Ident,
-                literal: "users".to_string(),
+                literal: Literal::new_string("users"),
             },
         ];
 
@@ -354,27 +369,27 @@ mod tests {
         let expected_tokens = vec![
             Token {
                 kind: Kind::Keyword(Keyword::SELECT),
-                literal: "select".to_string(),
+                literal: Literal::new_string("SELECT"),
             },
             Token {
                 kind: Kind::Ident,
-                literal: "[name]".to_string(),
+                literal: Literal::new_string("[name]"),
             },
             Token {
                 kind: Kind::Comma,
-                literal: ",".to_string(),
+                literal: Literal::new_string(","),
             },
             Token {
                 kind: Kind::Ident,
-                literal: "id".to_string(),
+                literal: Literal::new_string("id"),
             },
             Token {
                 kind: Kind::Keyword(Keyword::FROM),
-                literal: "from".to_string(),
+                literal: Literal::new_string("FROM"),
             },
             Token {
                 kind: Kind::Ident,
-                literal: "users".to_string(),
+                literal: Literal::new_string("users"),
             },
         ];
 
@@ -394,35 +409,35 @@ mod tests {
         let expected_tokens = vec![
             Token {
                 kind: Kind::Keyword(Keyword::SELECT),
-                literal: "select".to_string(),
+                literal: Literal::new_string("SELECT"),
             },
             Token {
                 kind: Kind::Ident,
-                literal: "name".to_string(),
+                literal: Literal::new_string("name"),
             },
             Token {
                 kind: Kind::Keyword(Keyword::AS),
-                literal: "as".to_string(),
+                literal: Literal::new_string("AS"),
             },
             Token {
                 kind: Kind::Ident,
-                literal: "'SuperName'".to_string(),
+                literal: Literal::new_string("'SuperName'"),
             },
             Token {
                 kind: Kind::Comma,
-                literal: ",".to_string(),
+                literal: Literal::new_string(","),
             },
             Token {
                 kind: Kind::Ident,
-                literal: "id".to_string(),
+                literal: Literal::new_string("id"),
             },
             Token {
                 kind: Kind::Keyword(Keyword::FROM),
-                literal: "from".to_string(),
+                literal: Literal::new_string("FROM"),
             },
             Token {
                 kind: Kind::Ident,
-                literal: "users".to_string(),
+                literal: Literal::new_string("users"),
             },
         ];
 

@@ -1,17 +1,27 @@
 use crate::token::Token;
 
+#[derive(Debug, PartialEq, Clone)]
 pub struct Query {
     pub statements: Vec<Statement>,
 }
 
+#[derive(Debug, PartialEq, Clone)]
 pub enum Expression {
-    Identifier(String),
-    Number(f64),
-    QuotedString(String),
+    Literal(Token),
+    Binary {
+        left: Box<Expression>,
+        operator: Token,
+        right: Box<Expression>,
+    },
+    Unary {
+        operator: Token,
+        right: Box<Expression>,
+    },
 }
 
+#[derive(Debug, PartialEq, Clone)]
 pub enum Statement {
-    SelectStatement(SelectStatement),
+    Select(SelectStatement),
 }
 
 impl Query {
@@ -22,21 +32,19 @@ impl Query {
     }
 }
 
+#[derive(Debug, PartialEq, Clone)]
 pub struct SelectStatement {
-    pub token: Token, // the token::TokenType::SELECT
     pub columns: Vec<Expression>,
     pub table: Vec<Expression>,
     pub where_clause: Option<Expression>,
 }
 
 impl SelectStatement {
-    pub fn new(token: Token) -> Self {
+    pub fn new() -> Self {
         SelectStatement {
-            token,
             columns: vec![],
             table: vec![],
             where_clause: None,
         }
     }
 }
-

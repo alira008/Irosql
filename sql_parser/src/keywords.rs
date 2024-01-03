@@ -30,8 +30,10 @@ macro_rules! define_keywords {
 // these keywords
 define_keywords!(
     ABS,
+    ALL,
     ALTER,
     AND,
+    ANY,
     AS,
     ASC,
     AUTOINCREMENT,
@@ -146,6 +148,7 @@ define_keywords!(
     SET,
     SMALLINT,
     SNAPSHOT,
+    SOME,
     STAGE,
     START,
     STATISTICS,

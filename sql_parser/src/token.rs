@@ -3,14 +3,19 @@ use crate::keywords;
 #[derive(Debug, Clone, PartialEq)]
 pub struct Token {
     pub kind: Kind,
-    pub literal: String,
+    pub literal: Literal,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Literal {
-    Identifer(String),
+    String(String),
     Number(f64),
-    Keyword(keywords::Keyword),
+}
+
+impl Literal {
+    pub fn new_string(string: &str) -> Self {
+        Literal::String(string.to_string())
+    }
 }
 
 #[derive(Debug, Copy, Clone, PartialEq)]
@@ -31,41 +36,7 @@ pub enum Kind {
     Plus,
     Minus,
     Divide,
-    Mod,
-    Period,
-    SemiColon,
-    LeftBracket,
-    RightBracket,
-    LeftBrace,
-    RightBrace,
-    Tilde,
-    ExclamationMark,
-    Illegal,
-    Eof,
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub enum TokenType {
-    Ident(Identifier),
-    Keyword(keywords::Keyword),
-    Number(f64),
-    QuotedString(String),
-
-    WhiteSpace(WhiteSpace),
-    Asterisk,
-    Comma,
-    LeftParen,
-    RightParen,
-    DoubleEqual,
-    Equal,
-    NotEqual,
-    LessThan,
-    LessThanEqual,
-    GreaterThan,
-    GreaterThanEqual,
-    Plus,
-    Minus,
-    Divide,
+    Multiply,
     Mod,
     Period,
     SemiColon,
