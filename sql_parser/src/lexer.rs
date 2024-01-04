@@ -159,7 +159,7 @@ impl<'a> Lexer<'a> {
                                 literal: Literal::String(ident),
                             };
                         } else {
-                            Token {
+                           return Token {
                                 kind: Kind::Illegal,
                                 literal: Literal::new_string(""),
                             }
@@ -184,7 +184,7 @@ impl<'a> Lexer<'a> {
                             literal: Literal::String(ident),
                         };
                     } else {
-                        Token {
+                        return Token {
                             kind: Kind::Illegal,
                             literal: Literal::new_string(""),
                         }
@@ -220,12 +220,12 @@ impl<'a> Lexer<'a> {
                         };
                     } else if ch.is_numeric() {
                         if let Some(number) = self.read_number() {
-                            Token {
+                            return Token {
                                 kind: Kind::Number,
                                 literal: Literal::Number(number),
                             }
                         } else {
-                            Token {
+                           return Token {
                                 kind: Kind::Illegal,
                                 literal: Literal::new_string(""),
                             }
