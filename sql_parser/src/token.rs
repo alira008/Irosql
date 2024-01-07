@@ -1,9 +1,19 @@
 use crate::keywords;
+use core::fmt;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Token {
     pub kind: Kind,
     pub literal: Literal,
+}
+
+impl fmt::Display for Token {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match &self.literal {
+            Literal::String(string) => write!(f, "{string}"),
+            Literal::Number(number) => write!(f, "{number}"),
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq)]

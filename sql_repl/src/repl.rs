@@ -17,7 +17,7 @@ pub fn start(stdin: &std::io::Stdin) {
         if parser.errors().len() > 0 {
             println!("Error parsing input: {:?}", parser.errors());
         } else {
-            dbg!(query);
+            println!("{}", query);
         }
         // loop {
         // let token = lexer.next_token();
