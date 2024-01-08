@@ -7,6 +7,8 @@ pub struct Lexer<'a> {
     current_position: usize, // current position in input (points to current char)
     read_position: usize,    // current reading position in input (after current char)
     ch: Option<char>,        // current char under examination
+    line: usize,            // the current line number
+    col: usize,          // the current column number
 }
 
 impl<'a> Lexer<'a> {
@@ -16,6 +18,8 @@ impl<'a> Lexer<'a> {
             current_position: 0,
             read_position: 0,
             ch: None,
+            line: 0,
+            col: 0
         };
         lexer.read_char();
         lexer
@@ -28,6 +32,13 @@ impl<'a> Lexer<'a> {
     fn read_char(&mut self) {
         if self.has_more_tokens() {
             self.ch = self.input.chars().nth(self.read_position);
+            if self.ch == Some('\n') {
+                self.line += 1;
+                self.col = 1;
+            } else {
+                self.col += 1;
+            }
+                    
         } else {
             self.ch = None;
         }
