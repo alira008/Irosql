@@ -156,6 +156,7 @@ impl<'a> Parser<'a> {
                         self.next_token();
                     } else {
                         // TODO: error handling
+                        self.current_error(Kind::Ident);
                         return None;
                     }
                 }
@@ -169,7 +170,7 @@ impl<'a> Parser<'a> {
 
         // at this point we should have a FROM keyword
         // but we should make sure
-        if !self.current_token_is(Kind::Keyword(Keyword::FROM)) {
+        if !self.expect_current(Kind::Keyword(Keyword::FROM)) {
             // TODO: error handling
             return None;
         }
@@ -256,6 +257,7 @@ impl<'a> Parser<'a> {
                 Kind::Keyword(Keyword::ROWS) => ast::RowOrRows::Rows,
                 _ => {
                     // TODO: error handling
+                self.current_error(Kind::Keyword(Keyword::ROWS));
                     return None;
                 }
             };
@@ -265,6 +267,7 @@ impl<'a> Parser<'a> {
             Some(ast::OffsetArg { value: offset, row })
         } else {
             // TODO: error handling
+            self.current_error(Kind::Ident);
             None
         }
     }
@@ -283,6 +286,7 @@ impl<'a> Parser<'a> {
             Kind::Keyword(Keyword::NEXT) => ast::NextOrFirst::Next,
             _ => {
                 // TODO: error handling
+                self.current_error(Kind::Keyword(Keyword::NEXT));
                 return None;
             }
         };
@@ -305,6 +309,7 @@ impl<'a> Parser<'a> {
                 Kind::Keyword(Keyword::ROWS) => ast::RowOrRows::Rows,
                 _ => {
                     // TODO: error handling
+                    self.current_error(Kind::Keyword(Keyword::ROW));
                     return None;
                 }
             };
@@ -372,6 +377,7 @@ impl<'a> Parser<'a> {
                         self.next_token();
                     } else {
                         // TODO: error handling
+                        self.current_error(Kind::Ident);
                         return None;
                     }
                 }
@@ -380,6 +386,7 @@ impl<'a> Parser<'a> {
 
         if !seen_order_by_arg {
             // TODO: error handling
+            self.current_error(Kind::Ident);
             return None;
         }
 
@@ -546,6 +553,33 @@ impl<'a> Parser<'a> {
         let msg = format!(
             "expected next token to be {:?}, got {:?} instead",
             token_kind, self.peek_token.kind
+        );
+        self.errors.push(msg);
+    }
+
+    fn expect_current(&mut self, token_kind: Kind) -> bool {
+        if self.current_token_is(token_kind) {
+            true
+        } else {
+            self.current_error(token_kind);
+            false
+        }
+    }
+
+    fn expect_current_multi(&mut self, token_kinds: &[Kind], default_token: Kind) -> bool {
+        for token_kind in token_kinds {
+            if self.current_token_is(*token_kind) {
+                return true;
+            }
+        }
+        self.current_error(default_token);
+        false
+    }
+
+    fn current_error(&mut self, token_kind: Kind) {
+        let msg = format!(
+            "expected token to be {:?}, got {:?} instead",
+            token_kind, self.current_token.kind
         );
         self.errors.push(msg);
     }
