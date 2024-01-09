@@ -1,9 +1,10 @@
 use crate::keywords;
 use crate::token::{Kind, Literal, Token};
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone)]
 pub struct Lexer<'a> {
     input: &'a str,
+    chars: std::iter::Peekable<std::str::Chars<'a>>,
     current_position: usize, // current position in input (points to current char)
     read_position: usize,    // current reading position in input (after current char)
     ch: Option<char>,        // current char under examination
@@ -15,6 +16,7 @@ impl<'a> Lexer<'a> {
     pub fn new(input: &str) -> Lexer {
         let mut lexer = Lexer {
             input,
+            chars: input.chars().peekable(),
             current_position: 0,
             read_position: 0,
             ch: None,
@@ -26,12 +28,14 @@ impl<'a> Lexer<'a> {
     }
 
     fn has_more_tokens(&self) -> bool {
-        self.read_position < self.input.len()
+        // self.read_position < self.input.len()
+        self.chars.peek().is_some()
     }
 
     fn read_char(&mut self) {
         if self.has_more_tokens() {
-            self.ch = self.input.chars().nth(self.read_position);
+            self.ch = self.chars.next();
+            // self.ch = self.input.chars().nth(self.read_position);
             if self.ch == Some('\n') {
                 self.line += 1;
                 self.col = 1;
@@ -44,14 +48,6 @@ impl<'a> Lexer<'a> {
         }
         self.current_position = self.read_position;
         self.read_position += 1;
-    }
-
-    fn peak_char(&self) -> Option<char> {
-        if self.has_more_tokens() {
-            self.input.chars().nth(self.read_position)
-        } else {
-            None
-        }
     }
 
     pub fn next_token(&mut self) -> Token {
@@ -76,7 +72,7 @@ impl<'a> Lexer<'a> {
                     literal: Literal::new_string("*"),
                 },
                 '=' => {
-                    if self.peak_char() == Some('=') {
+                    if self.chars.peek() == Some(&'=') {
                         self.read_char();
                         Token {
                             kind: Kind::DoubleEqual,
@@ -90,7 +86,7 @@ impl<'a> Lexer<'a> {
                     }
                 }
                 '!' => {
-                    if self.peak_char() == Some('=') {
+                    if self.chars.peek() == Some(&'=') {
                         self.read_char();
                         Token {
                             kind: Kind::NotEqual,
@@ -104,7 +100,7 @@ impl<'a> Lexer<'a> {
                     }
                 }
                 '<' => {
-                    if self.peak_char() == Some('=') {
+                    if self.chars.peek() == Some(&'=') {
                         self.read_char();
                         Token {
                             kind: Kind::LessThanEqual,
@@ -118,7 +114,7 @@ impl<'a> Lexer<'a> {
                     }
                 }
                 '>' => {
-                    if self.peak_char() == Some('=') {
+                    if self.chars.peek() == Some(&'=') {
                         self.read_char();
                         Token {
                             kind: Kind::GreaterThanEqual,
@@ -160,7 +156,7 @@ impl<'a> Lexer<'a> {
                     literal: Literal::new_string(";"),
                 },
                 '[' => {
-                    let peaked_char = self.peak_char();
+                    let peaked_char = self.chars.peek();
                     if peaked_char.is_some_and(|c| c.is_alphabetic()) {
                         // Read the identifier until the next non-alphabetic character
                         // We should be reading until the next ']'
@@ -260,7 +256,7 @@ impl<'a> Lexer<'a> {
     }
 
     fn skip_whitespace(&mut self) {
-        while self.ch.is_some() && self.ch.unwrap().is_whitespace() {
+        while self.ch.is_some_and(|ch| ch.is_whitespace()) {
             self.read_char();
         }
     }
