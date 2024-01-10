@@ -5,7 +5,7 @@ pub mod token;
 use keywords::Keyword;
 use token::{Kind, Literal, Token};
 
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, Clone)]
 pub struct Parser<'a> {
     lexer: lexer::Lexer<'a>,
     current_token: Token,
@@ -28,14 +28,8 @@ impl<'a> Parser<'a> {
     pub fn new(lexer: lexer::Lexer<'a>) -> Self {
         let mut parser = Parser {
             lexer,
-            current_token: Token {
-                kind: Kind::Eof,
-                literal: Literal::new_string(""),
-            },
-            peek_token: Token {
-                kind: Kind::Eof,
-                literal: Literal::new_string(""),
-            },
+            current_token: Token::new(Kind::Eof, Literal::new_string("")),
+            peek_token: Token::new(Kind::Eof, Literal::new_string("")),
             errors: vec![],
         };
         parser.next_token();
@@ -50,7 +44,7 @@ impl<'a> Parser<'a> {
     pub fn parse(&mut self) -> ast::Query {
         let mut query = ast::Query::new();
 
-        while self.current_token.kind != Kind::Eof {
+        while self.current_token.kind() != Kind::Eof {
             if let Some(statement) = self.parse_statement() {
                 query.statements.push(statement);
             }
@@ -67,7 +61,7 @@ impl<'a> Parser<'a> {
     }
 
     fn parse_statement(&mut self) -> Option<ast::Statement> {
-        match self.current_token.kind {
+        match self.current_token.kind() {
             Kind::Keyword(keyword) => match keyword {
                 Keyword::SELECT => {
                     let select_statement = self.parse_select_statement();
@@ -132,7 +126,10 @@ impl<'a> Parser<'a> {
 
         // check if the next token is an identifier
         // return an error if the next token is not an identifier or number
-        if !self.expect_peek_multi(&[Kind::Number, Kind::Ident], Kind::Ident) {
+        if !self.expect_peek_multi(
+            &[Kind::Number, Kind::Ident, Kind::Asterisk, Kind::LeftParen],
+            Kind::Ident,
+        ) {
             // TODO: error handling
             return None;
         }
@@ -141,7 +138,7 @@ impl<'a> Parser<'a> {
         // check if we saw a column after comma
         let mut column_seen = false;
         while !self.current_token_is(Kind::Keyword(Keyword::FROM)) {
-            match self.current_token.kind {
+            match self.current_token.kind() {
                 Kind::Comma => {
                     // check if we have an identifier after a comma
                     column_seen = false;
@@ -182,7 +179,7 @@ impl<'a> Parser<'a> {
             return None;
         }
 
-        match self.current_token.kind {
+        match self.current_token.kind() {
             Kind::Ident => statement
                 .table
                 .push(ast::Expression::Literal(self.current_token.clone())),
@@ -202,6 +199,29 @@ impl<'a> Parser<'a> {
             statement.where_clause = where_clause;
         }
 
+        // check if we have any GROUP BY clause
+        if self.peek_token_is(Kind::Keyword(Keyword::GROUP)) {
+            // skip the GROUP keyword
+            self.next_token();
+
+            if let Some(expression) = self.parse_group_by_args() {
+                statement.group_by = expression;
+            } else {
+                return None;
+            }
+        }
+
+            dbg!(&self.current_token);
+        // check if we have any having clause
+        if self.peek_token_is(Kind::Keyword(Keyword::HAVING)) {
+            // skip the having keyword
+            self.next_token();
+            self.next_token();
+            dbg!(&self.current_token);
+
+            statement.having = self.parse_expression(PRECEDENCE_LOWEST);
+        }
+
         if self.peek_token_is(Kind::Keyword(Keyword::ORDER)) {
             self.next_token();
 
@@ -215,7 +235,10 @@ impl<'a> Parser<'a> {
             }
         }
 
-        if self.current_token_is(Kind::Keyword(Keyword::OFFSET)) {
+        if self.peek_token_is(Kind::Keyword(Keyword::OFFSET)) {
+            // go to offset
+            self.next_token();
+
             let offset = self.parse_offset();
             if offset.is_none() {
                 // TODO: error handling
@@ -239,6 +262,28 @@ impl<'a> Parser<'a> {
         Some(ast::Statement::Select(statement))
     }
 
+    fn parse_grouping(&mut self) -> Option<ast::Expression> {
+        if !self.expect_current(Kind::LeftParen) {
+            return None;
+        }
+
+        self.next_token();
+
+        let grouping;
+
+        if let Some(expression) = self.parse_expression(PRECEDENCE_LOWEST) {
+            grouping = Some(ast::Expression::Grouping(Box::new(expression)));
+        } else {
+            // TODO: error handling
+            return None;
+        }
+        if !self.expect_peek(Kind::RightParen) {
+            return None;
+        } else {
+            grouping
+        }
+    }
+
     fn parse_offset(&mut self) -> Option<ast::OffsetArg> {
         // skip the OFFSET keyword
         self.next_token();
@@ -252,12 +297,12 @@ impl<'a> Parser<'a> {
                 // TODO: error handling
                 return None;
             }
-            let row = match self.current_token.kind {
+            let row = match self.current_token.kind() {
                 Kind::Keyword(Keyword::ROW) => ast::RowOrRows::Row,
                 Kind::Keyword(Keyword::ROWS) => ast::RowOrRows::Rows,
                 _ => {
                     // TODO: error handling
-                self.current_error(Kind::Keyword(Keyword::ROWS));
+                    self.current_error(Kind::Keyword(Keyword::ROWS));
                     return None;
                 }
             };
@@ -281,7 +326,7 @@ impl<'a> Parser<'a> {
             // TODO: error handling
             return None;
         }
-        let first = match self.current_token.kind {
+        let first = match self.current_token.kind() {
             Kind::Keyword(Keyword::FIRST) => ast::NextOrFirst::First,
             Kind::Keyword(Keyword::NEXT) => ast::NextOrFirst::Next,
             _ => {
@@ -304,7 +349,7 @@ impl<'a> Parser<'a> {
                 // TODO: error handling
                 return None;
             }
-            let row = match self.current_token.kind {
+            let row = match self.current_token.kind() {
                 Kind::Keyword(Keyword::ROW) => ast::RowOrRows::Row,
                 Kind::Keyword(Keyword::ROWS) => ast::RowOrRows::Rows,
                 _ => {
@@ -333,6 +378,54 @@ impl<'a> Parser<'a> {
         }
     }
 
+    fn parse_group_by_args(&mut self) -> Option<Vec<ast::Expression>> {
+        // check if the next token is BY
+        if !self.expect_peek(Kind::Keyword(Keyword::BY)) {
+            // TODO: error handling
+            return None;
+        }
+
+        // get the columns to order by
+        let mut group_by_args = vec![];
+        // needed to check if we have an expression after comma
+        let mut seen_arg = false;
+        while !self.peek_token_is(Kind::Keyword(Keyword::HAVING))
+            && !self.peek_token_is(Kind::SemiColon)
+            && !self.peek_token_is(Kind::Eof)
+        {
+            self.next_token();
+
+            match self.current_token.kind() {
+                Kind::Comma => {
+                    seen_arg = false;
+                }
+                _ => {
+                    if let Some(expression) = self.parse_expression(PRECEDENCE_LOWEST) {
+                        // we have seen an group_by_arg
+                        seen_arg = true;
+                        group_by_args.push(expression);
+                    } else {
+                        // TODO: error handling
+                        self.current_error(Kind::Ident);
+                        return None;
+                    }
+                }
+            }
+        }
+
+        if !seen_arg {
+            // TODO: error handling
+            self.current_error(Kind::Ident);
+            return None;
+        }
+
+        match group_by_args.len() {
+            // TODO: error handling
+            0 => None,
+            _ => Some(group_by_args),
+        }
+    }
+
     fn parse_order_by_args(&mut self) -> Option<Vec<ast::OrderByArg>> {
         // check if the next token is BY
         if !self.expect_peek(Kind::Keyword(Keyword::BY)) {
@@ -347,14 +440,15 @@ impl<'a> Parser<'a> {
         let mut order_by_args = vec![];
         // needed to check if we have an expression after comma
         let mut seen_order_by_arg = false;
-        while !self.current_token_is(Kind::Keyword(Keyword::OFFSET))
-            && !self.current_token_is(Kind::SemiColon)
-            && !self.current_token_is(Kind::Eof)
+        while !self.peek_token_is(Kind::Keyword(Keyword::OFFSET))
+            && !self.peek_token_is(Kind::SemiColon)
+            && !self.peek_token_is(Kind::Eof)
         {
-            match self.current_token.kind {
+            self.next_token();
+
+            match self.current_token.kind() {
                 Kind::Comma => {
                     seen_order_by_arg = false;
-                    self.next_token();
                 }
                 _ => {
                     if let Some(expression) = self.parse_expression(PRECEDENCE_LOWEST) {
@@ -374,7 +468,6 @@ impl<'a> Parser<'a> {
                             column: expression,
                             asc: is_asc,
                         });
-                        self.next_token();
                     } else {
                         // TODO: error handling
                         self.current_error(Kind::Ident);
@@ -406,6 +499,7 @@ impl<'a> Parser<'a> {
         while precedence < self.peek_precedence() {
             // move to the next token
             self.next_token();
+                dbg!(&self.current_token);
 
             match left_expression {
                 Some(expression) => {
@@ -422,8 +516,8 @@ impl<'a> Parser<'a> {
     }
 
     fn parse_prefix_expression(&mut self) -> Option<ast::Expression> {
-        match self.current_token.kind {
-            Kind::Ident | Kind::Number => {
+        match self.current_token.kind() {
+            Kind::Ident | Kind::Number | Kind::Asterisk => {
                 Some(ast::Expression::Literal(self.current_token.clone()))
             }
             Kind::Plus | Kind::Minus | Kind::Keyword(Keyword::NOT) => {
@@ -443,15 +537,16 @@ impl<'a> Parser<'a> {
                     None
                 }
             }
+            Kind::LeftParen => self.parse_grouping(),
             _ => None,
         }
     }
 
     fn parse_infix_expression(&mut self, left: ast::Expression) -> Option<ast::Expression> {
-        match self.current_token.kind {
+        match self.current_token.kind() {
             Kind::Plus
             | Kind::Minus
-            | Kind::Multiply
+            | Kind::Asterisk
             | Kind::Divide
             | Kind::Equal
             | Kind::NotEqual
@@ -470,6 +565,7 @@ impl<'a> Parser<'a> {
                 let operator = self.current_token.clone();
                 let precedence = self.current_precedence();
                 self.next_token();
+                dbg!(&self.current_token);
 
                 // parse the expression to the right of the operator
                 if let Some(right_expression) = self.parse_expression(precedence) {
@@ -488,17 +584,17 @@ impl<'a> Parser<'a> {
     }
 
     fn peek_precedence(&self) -> u8 {
-        self.map_precedence(self.peek_token.kind)
+        self.map_precedence(self.peek_token.kind())
     }
 
     fn current_precedence(&self) -> u8 {
-        self.map_precedence(self.current_token.kind)
+        self.map_precedence(self.current_token.kind())
     }
 
     fn map_precedence(&self, token: Kind) -> u8 {
         match token {
             Kind::Tilde => PRECEDENCE_HIGHEST,
-            Kind::Multiply | Kind::Divide => PRECEDENCE_PRODUCT,
+            Kind::Asterisk | Kind::Divide => PRECEDENCE_PRODUCT,
             Kind::Plus | Kind::Minus => PRECEDENCE_SUM,
             Kind::Equal
             | Kind::NotEqual
@@ -520,11 +616,11 @@ impl<'a> Parser<'a> {
     }
 
     fn current_token_is(&self, token_kind: Kind) -> bool {
-        self.current_token.kind == token_kind
+        self.current_token.kind() == token_kind
     }
 
     fn peek_token_is(&self, token_kind: Kind) -> bool {
-        self.peek_token.kind == token_kind
+        self.peek_token.kind() == token_kind
     }
 
     fn expect_peek(&mut self, token_kind: Kind) -> bool {
@@ -552,7 +648,8 @@ impl<'a> Parser<'a> {
     fn peek_error(&mut self, token_kind: Kind) {
         let msg = format!(
             "expected next token to be {:?}, got {:?} instead",
-            token_kind, self.peek_token.kind
+            token_kind,
+            self.peek_token.kind()
         );
         self.errors.push(msg);
     }
@@ -566,6 +663,7 @@ impl<'a> Parser<'a> {
         }
     }
 
+    #[allow(dead_code)]
     fn expect_current_multi(&mut self, token_kinds: &[Kind], default_token: Kind) -> bool {
         for token_kind in token_kinds {
             if self.current_token_is(*token_kind) {
@@ -579,7 +677,8 @@ impl<'a> Parser<'a> {
     fn current_error(&mut self, token_kind: Kind) {
         let msg = format!(
             "expected token to be {:?}, got {:?} instead",
-            token_kind, self.current_token.kind
+            token_kind,
+            self.current_token.kind()
         );
         self.errors.push(msg);
     }
@@ -599,56 +698,52 @@ mod tests {
             statements: vec![ast::Statement::Select(ast::SelectStatement {
                 distinct: false,
                 top: None,
-                columns: vec![ast::Expression::Literal(Token {
-                    kind: Kind::Ident,
-                    literal: Literal::new_string("name"),
-                })],
-                table: vec![ast::Expression::Literal(Token {
-                    kind: Kind::Ident,
-                    literal: Literal::new_string("users"),
-                })],
+                columns: vec![ast::Expression::Literal(Token::new(
+                    Kind::Ident,
+                    Literal::new_string("name"),
+                ))],
+                table: vec![ast::Expression::Literal(Token::new(
+                    Kind::Ident,
+                    Literal::new_string("users"),
+                ))],
                 where_clause: Some(ast::Expression::Binary {
-                    left: Box::new(ast::Expression::Literal(Token {
-                        kind: Kind::Ident,
-                        literal: Literal::new_string("lastname"),
-                    })),
-                    operator: Token {
-                        kind: Kind::GreaterThanEqual,
-                        literal: Literal::new_string(">="),
-                    },
-                    right: Box::new(ast::Expression::Literal(Token {
-                        kind: Kind::Ident,
-                        literal: Literal::new_string("'bob'"),
-                    })),
+                    left: Box::new(ast::Expression::Literal(Token::new(
+                        Kind::Ident,
+                        Literal::new_string("lastname"),
+                    ))),
+                    operator: Token::new(Kind::GreaterThanEqual, Literal::new_string(">=")),
+                    right: Box::new(ast::Expression::Literal(Token::new(
+                        Kind::Ident,
+                        Literal::new_string("'bob'"),
+                    ))),
                 }),
                 order_by: vec![
                     ast::OrderByArg {
-                        column: ast::Expression::Literal(Token {
-                            kind: Kind::Ident,
-                            literal: Literal::new_string("dob"),
-                        }),
+                        column: ast::Expression::Literal(Token::new(
+                            Kind::Ident,
+                            Literal::new_string("dob"),
+                        )),
                         asc: Some(true),
                     },
                     ast::OrderByArg {
-                        column: ast::Expression::Literal(Token {
-                            kind: Kind::Ident,
-                            literal: Literal::new_string("name"),
-                        }),
+                        column: ast::Expression::Literal(Token::new(
+                            Kind::Ident,
+                            Literal::new_string("name"),
+                        )),
                         asc: Some(false),
                     },
                 ],
+                group_by: vec![],
+                having: None,
                 offset: Some(ast::OffsetArg {
-                    value: ast::Expression::Literal(Token {
-                        kind: Kind::Number,
-                        literal: Literal::Number(10.0),
-                    }),
+                    value: ast::Expression::Literal(Token::new(
+                        Kind::Number,
+                        Literal::Number(10.0),
+                    )),
                     row: ast::RowOrRows::Rows,
                 }),
                 fetch: Some(ast::FetchArg {
-                    value: ast::Expression::Literal(Token {
-                        kind: Kind::Number,
-                        literal: Literal::Number(5.0),
-                    }),
+                    value: ast::Expression::Literal(Token::new(Kind::Number, Literal::Number(5.0))),
                     first: ast::NextOrFirst::Next,
                     row: ast::RowOrRows::Rows,
                 }),
@@ -671,39 +766,32 @@ mod tests {
                 top: Some(ast::TopArg {
                     with_ties: false,
                     percent: true,
-                    quantity: ast::Expression::Literal(Token {
-                        kind: Kind::Number,
-                        literal: Literal::Number(50.0),
-                    }),
+                    quantity: ast::Expression::Literal(Token::new(
+                        Kind::Number,
+                        Literal::Number(50.0),
+                    )),
                 }),
                 columns: vec![
-                    ast::Expression::Literal(Token {
-                        kind: Kind::Ident,
-                        literal: Literal::new_string("name"),
-                    }),
-                    ast::Expression::Literal(Token {
-                        kind: Kind::Number,
-                        literal: Literal::Number(1.0),
-                    }),
+                    ast::Expression::Literal(Token::new(Kind::Ident, Literal::new_string("name"))),
+                    ast::Expression::Literal(Token::new(Kind::Number, Literal::Number(1.0))),
                 ],
-                table: vec![ast::Expression::Literal(Token {
-                    kind: Kind::Ident,
-                    literal: Literal::new_string("users"),
-                })],
+                table: vec![ast::Expression::Literal(Token::new(
+                    Kind::Ident,
+                    Literal::new_string("users"),
+                ))],
                 where_clause: Some(ast::Expression::Binary {
-                    left: Box::new(ast::Expression::Literal(Token {
-                        kind: Kind::Ident,
-                        literal: Literal::new_string("lastname"),
-                    })),
-                    operator: Token {
-                        kind: Kind::GreaterThanEqual,
-                        literal: Literal::new_string(">="),
-                    },
-                    right: Box::new(ast::Expression::Literal(Token {
-                        kind: Kind::Number,
-                        literal: Literal::Number(1.0),
-                    })),
+                    left: Box::new(ast::Expression::Literal(Token::new(
+                        Kind::Ident,
+                        Literal::new_string("lastname"),
+                    ))),
+                    operator: Token::new(Kind::GreaterThanEqual, Literal::new_string(">=")),
+                    right: Box::new(ast::Expression::Literal(Token::new(
+                        Kind::Number,
+                        Literal::Number(1.0),
+                    ))),
                 }),
+                group_by: vec![],
+                having: None,
                 order_by: vec![],
                 offset: None,
                 fetch: None,
@@ -725,36 +813,29 @@ mod tests {
                 distinct: false,
                 top: None,
                 columns: vec![
-                    ast::Expression::Literal(Token {
-                        kind: Kind::Ident,
-                        literal: Literal::new_string("*"),
-                    }),
-                    ast::Expression::Literal(Token {
-                        kind: Kind::Ident,
-                        literal: Literal::new_string("name"),
-                    }),
-                    ast::Expression::Literal(Token {
-                        kind: Kind::Ident,
-                        literal: Literal::new_string("firstname"),
-                    }),
-                    ast::Expression::Literal(Token {
-                        kind: Kind::Ident,
-                        literal: Literal::new_string("lastname"),
-                    }),
-                    ast::Expression::Literal(Token {
-                        kind: Kind::Ident,
-                        literal: Literal::new_string("[first]"),
-                    }),
-                    ast::Expression::Literal(Token {
-                        kind: Kind::Ident,
-                        literal: Literal::new_string("dob"),
-                    }),
+                    ast::Expression::Literal(Token::new(Kind::Asterisk, Literal::new_string("*"))),
+                    ast::Expression::Literal(Token::new(Kind::Ident, Literal::new_string("name"))),
+                    ast::Expression::Literal(Token::new(
+                        Kind::Ident,
+                        Literal::new_string("firstname"),
+                    )),
+                    ast::Expression::Literal(Token::new(
+                        Kind::Ident,
+                        Literal::new_string("lastname"),
+                    )),
+                    ast::Expression::Literal(Token::new(
+                        Kind::Ident,
+                        Literal::new_string("[first]"),
+                    )),
+                    ast::Expression::Literal(Token::new(Kind::Ident, Literal::new_string("dob"))),
                 ],
-                table: vec![ast::Expression::Literal(Token {
-                    kind: Kind::Ident,
-                    literal: Literal::new_string("users"),
-                })],
+                table: vec![ast::Expression::Literal(Token::new(
+                    Kind::Ident,
+                    Literal::new_string("users"),
+                ))],
                 where_clause: None,
+                group_by: vec![],
+                having: None,
                 order_by: vec![],
                 offset: None,
                 fetch: None,
@@ -775,48 +856,41 @@ mod tests {
             statements: vec![ast::Statement::Select(ast::SelectStatement {
                 distinct: false,
                 top: None,
-                columns: vec![ast::Expression::Literal(Token {
-                    kind: Kind::Ident,
-                    literal: Literal::new_string("name"),
-                })],
-                table: vec![ast::Expression::Literal(Token {
-                    kind: Kind::Ident,
-                    literal: Literal::new_string("users"),
-                })],
+                columns: vec![ast::Expression::Literal(Token::new(
+                    Kind::Ident,
+                    Literal::new_string("name"),
+                ))],
+                table: vec![ast::Expression::Literal(Token::new(
+                    Kind::Ident,
+                    Literal::new_string("users"),
+                ))],
                 where_clause: Some(ast::Expression::Binary {
                     left: Box::new(ast::Expression::Binary {
-                        left: Box::new(ast::Expression::Literal(Token {
-                            kind: Kind::Ident,
-                            literal: Literal::new_string("lastname"),
-                        })),
-                        operator: Token {
-                            kind: Kind::Equal,
-                            literal: Literal::new_string("="),
-                        },
-                        right: Box::new(ast::Expression::Literal(Token {
-                            kind: Kind::Ident,
-                            literal: Literal::new_string("'blah'"),
-                        })),
+                        left: Box::new(ast::Expression::Literal(Token::new(
+                            Kind::Ident,
+                            Literal::new_string("lastname"),
+                        ))),
+                        operator: Token::new(Kind::Equal, Literal::new_string("=")),
+                        right: Box::new(ast::Expression::Literal(Token::new(
+                            Kind::Ident,
+                            Literal::new_string("'blah'"),
+                        ))),
                     }),
-                    operator: Token {
-                        kind: Kind::Keyword(Keyword::AND),
-                        literal: Literal::new_string("AND"),
-                    },
+                    operator: Token::new(Kind::Keyword(Keyword::AND), Literal::new_string("AND")),
                     right: Box::new(ast::Expression::Binary {
-                        left: Box::new(ast::Expression::Literal(Token {
-                            kind: Kind::Ident,
-                            literal: Literal::new_string("firstname"),
-                        })),
-                        operator: Token {
-                            kind: Kind::GreaterThan,
-                            literal: Literal::new_string(">"),
-                        },
-                        right: Box::new(ast::Expression::Literal(Token {
-                            kind: Kind::Ident,
-                            literal: Literal::new_string("'hello'"),
-                        })),
+                        left: Box::new(ast::Expression::Literal(Token::new(
+                            Kind::Ident,
+                            Literal::new_string("firstname"),
+                        ))),
+                        operator: Token::new(Kind::GreaterThan, Literal::new_string(">")),
+                        right: Box::new(ast::Expression::Literal(Token::new(
+                            Kind::Ident,
+                            Literal::new_string("'hello'"),
+                        ))),
                     }),
                 }),
+                group_by: vec![],
+                having: None,
                 order_by: vec![],
                 offset: None,
                 fetch: None,

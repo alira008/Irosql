@@ -3,8 +3,22 @@ use core::fmt;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Token {
-    pub kind: Kind,
-    pub literal: Literal,
+    kind: Kind,
+    literal: Literal,
+}
+
+impl Token {
+    pub fn new(kind: Kind, literal: Literal) -> Self {
+        Token { kind, literal }
+    }
+
+    pub fn kind(&self) -> Kind {
+        self.kind
+    }
+
+    pub fn literal(&self) -> &Literal {
+        &self.literal
+    }
 }
 
 impl fmt::Display for Token {
@@ -46,7 +60,7 @@ pub enum Kind {
     Plus,
     Minus,
     Divide,
-    Multiply,
+    Asterisk,
     Mod,
     Period,
     SemiColon,
@@ -70,6 +84,6 @@ pub enum WhiteSpace {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Identifier {
-    pub value: String,
-    pub quote_style: Option<char>,
+    value: String,
+    quote_style: Option<char>,
 }

@@ -24,7 +24,6 @@ impl fmt::Display for Query {
     }
 }
 
-
 #[derive(Debug, PartialEq, Clone)]
 pub enum Expression {
     Literal(Token),
@@ -37,6 +36,7 @@ pub enum Expression {
         operator: Token,
         right: Box<Expression>,
     },
+    Grouping(Box<Expression>),
 }
 
 impl fmt::Display for Expression {
@@ -49,6 +49,7 @@ impl fmt::Display for Expression {
                 right,
             } => write!(f, "{} {} {}", left, operator, right),
             Expression::Unary { operator, right } => write!(f, "{} {}", operator, right),
+            Expression::Grouping(expr) => write!(f, "({})", expr),
         }
     }
 }
@@ -73,6 +74,8 @@ pub struct SelectStatement {
     pub columns: Vec<Expression>,
     pub table: Vec<Expression>,
     pub where_clause: Option<Expression>,
+    pub group_by: Vec<Expression>,
+    pub having: Option<Expression>,
     pub order_by: Vec<OrderByArg>,
     pub offset: Option<OffsetArg>,
     pub fetch: Option<FetchArg>,
@@ -101,12 +104,14 @@ impl fmt::Display for SelectStatement {
 
         // COLUMNS
         for (i, col) in self.columns.iter().enumerate() {
-            write!(f, "{} ", col)?;
+            write!(f, "{}", col)?;
 
             // only print comma if not last column
             if i < self.columns.len() - 1 {
-                f.write_str(", ")?;
+                f.write_str(",")?;
             }
+
+            write!(f, " ")?;
         }
 
         // FROM
@@ -114,16 +119,39 @@ impl fmt::Display for SelectStatement {
 
         // TABLE
         for (i, table) in self.table.iter().enumerate() {
-            write!(f, "{} ", table)?;
+            write!(f, "{}", table)?;
+
             // only print comma if not last table
             if i < self.table.len() - 1 {
-                f.write_str(", ")?;
+                f.write_str(",")?;
             }
+
+            write!(f, " ")?;
         }
 
         // WHERE
         if let Some(where_clause) = &self.where_clause {
             write!(f, "WHERE {} ", where_clause)?;
+        }
+
+        // GROUPING
+        if !self.group_by.is_empty() {
+            f.write_str("GROUP BY ")?;
+            for (i, group_by_expr) in self.group_by.iter().enumerate() {
+                write!(f, "{}", group_by_expr)?;
+
+                // only print comma if not last table
+                if i < self.table.len() - 1 {
+                    f.write_str(",")?;
+                }
+
+                write!(f, " ")?;
+            }
+        }
+
+        // HAVING
+        if let Some(having_clause) = &self.having {
+            write!(f, "HAVING {} ", having_clause)?;
         }
 
         // ORDER BY
