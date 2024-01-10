@@ -45,6 +45,10 @@ impl Token {
         Token { kind, literal, location: Location::zero() }
     }
 
+    pub fn wrap_kind(kind: Kind) -> Self {
+        Token { kind, literal: Literal::new_string(""), location: Location::zero() }
+    }
+
     pub fn kind(&self) -> Kind {
         self.kind
     }

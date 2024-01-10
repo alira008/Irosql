@@ -119,7 +119,7 @@ impl<'a> Parser<'a> {
                     quantity: expression,
                 });
             } else {
-                // TODO: error handling
+                self.current_msg_error("expected expression after TOP keyword");
                 return None;
             }
         }
@@ -156,7 +156,6 @@ impl<'a> Parser<'a> {
                         statement.columns.push(expression);
                         // self.next_token();
                     } else {
-                        // TODO: error handling
                         self.current_error(Kind::Ident);
                         return None;
                     }
@@ -165,7 +164,7 @@ impl<'a> Parser<'a> {
         }
         // check if we saw a column after comma
         if !column_seen {
-            // TODO: error handling
+            self.current_msg_error("expected column after comma");
             return None;
         }
 
@@ -203,25 +202,17 @@ impl<'a> Parser<'a> {
         // at this point we should have a FROM keyword
         // but we should make sure
         if !self.expect_peek(Kind::Keyword(Keyword::FROM)) {
-            // TODO: error handling
             return None;
         }
 
         // get the table to select from
         // check if the next token is an identifier
         if !self.expect_peek(Kind::Ident) {
-            // TODO: error handling
             return None;
-        }
-
-        match self.current_token.kind() {
-            Kind::Ident => statement
+        } else {
+            statement
                 .table
-                .push(ast::Expression::Literal(self.current_token.clone())),
-            _ => {
-                // TODO: error handling
-                return None;
-            }
+                .push(ast::Expression::Literal(self.current_token.clone()));
         }
 
         // check if we have any where clause
@@ -230,8 +221,16 @@ impl<'a> Parser<'a> {
             self.next_token();
             self.next_token();
 
-            let where_clause = self.parse_expression(PRECEDENCE_LOWEST);
-            statement.where_clause = where_clause;
+            let expression = self.parse_expression(PRECEDENCE_LOWEST);
+            if expression.as_ref().is_some_and(|ex| *ex == ast::Expression::Literal(token::Token::wrap_kind(Kind::Ident))) {
+                self.current_msg_error("expected expression after WHERE keyword");
+            }
+            if expression.is_none() {
+                self.current_msg_error("expected expression after WHERE keyword");
+                return None;
+            }
+
+            statement.where_clause = expression;
         }
 
         // check if we have any GROUP BY clause
@@ -242,6 +241,7 @@ impl<'a> Parser<'a> {
             if let Some(expression) = self.parse_group_by_args() {
                 statement.group_by = expression;
             } else {
+                self.current_msg_error("expected expression after GROUP BY keyword");
                 return None;
             }
         }
@@ -252,20 +252,24 @@ impl<'a> Parser<'a> {
             self.next_token();
             self.next_token();
 
-            statement.having = self.parse_expression(PRECEDENCE_LOWEST);
+            let expression = self.parse_expression(PRECEDENCE_LOWEST);
+            if expression.is_none() {
+                self.current_msg_error("expected expression after HAVING keyword");
+                return None;
+            }
+
+            statement.having = expression;
         }
 
         if self.peek_token_is(Kind::Keyword(Keyword::ORDER)) {
             // go to order keyword
             self.next_token();
 
-            let order_by_args = self.parse_order_by_args();
-            match order_by_args {
-                Some(args) => statement.order_by = args,
-                None => {
-                    // TODO: error handling
-                    return None;
-                }
+            if let Some(args) = self.parse_order_by_args() {
+                statement.order_by = args;
+            } else {
+                self.current_msg_error("expected expression after ORDER BY keyword");
+                return None;
             }
         }
 
@@ -275,7 +279,7 @@ impl<'a> Parser<'a> {
 
             let offset = self.parse_offset();
             if offset.is_none() {
-                // TODO: error handling
+                self.current_msg_error("expected expression after OFFSET keyword");
                 return None;
             }
 
@@ -289,6 +293,7 @@ impl<'a> Parser<'a> {
             let fetch = self.parse_fetch();
             if fetch.is_none() {
                 // TODO: error handling
+                self.current_msg_error("expected expression after FETCH keyword");
                 return None;
             }
 
@@ -718,8 +723,8 @@ impl<'a> Parser<'a> {
         false
     }
 
-    fn peek_error(&mut self, token_kind: Kind) {
-        let mut pointer_literal_len = match self.peek_token.literal() {
+    fn make_string_error(&mut self, msg: &str, token: Token) -> String {
+        let mut pointer_literal_len = match token.literal() {
             Literal::String(string) => string.len(),
             Literal::Number(num) => num.to_string().len(),
         };
@@ -728,43 +733,64 @@ impl<'a> Parser<'a> {
         }
         let pointer_line = format!(
             "{}{}",
-            " ".repeat(self.peek_token.location().column),
+            " ".repeat(token.location().column),
             "^".repeat(pointer_literal_len)
         );
 
-        let msg = format!(
-            "Error at {}: expected next token to be {:?}, got {:?} instead\n{}\n{}",
-            self.peek_token.location(),
-            token_kind,
-            self.peek_token.literal(),
+        format!(
+            "Error at {}: {:?}, got {:?} instead\n{}\n{}",
+            token.location(),
+            msg,
+            token.literal(),
             self.lexer.current_line_input(),
             pointer_line
+        )
+    }
+
+    fn make_error(&mut self, token_kind: Kind, token: Token) -> String {
+        let mut pointer_literal_len = match token.literal() {
+            Literal::String(string) => string.len(),
+            Literal::Number(num) => num.to_string().len(),
+        };
+        if pointer_literal_len == 0 {
+            pointer_literal_len = 1;
+        }
+        let pointer_line = format!(
+            "{}{}",
+            " ".repeat(token.location().column),
+            "^".repeat(pointer_literal_len)
         );
+
+        format!(
+            "Error at {}: expected token to be {:?}, got {:?} instead\n{}\n{}",
+            token.location(),
+            token_kind,
+            token.literal(),
+            self.lexer.current_line_input(),
+            pointer_line
+        )
+    }
+
+    # [allow(dead_code)]
+    fn peek_msg_error(&mut self, msg: &str) {
+        let msg = self.make_string_error(msg, self.peek_token.clone());
+
+        self.errors.push(msg);
+    }
+
+    fn current_msg_error(&mut self, msg: &str) {
+        let msg = self.make_string_error(msg, self.current_token.clone());
+        self.errors.push(msg);
+    }
+
+    fn peek_error(&mut self, token_kind: Kind) {
+        let msg = self.make_error(token_kind, self.peek_token.clone());
+
         self.errors.push(msg);
     }
 
     fn current_error(&mut self, token_kind: Kind) {
-        let mut pointer_literal_len = match self.current_token.literal() {
-            Literal::String(string) => string.len(),
-            Literal::Number(num) => num.to_string().len(),
-        };
-        if pointer_literal_len == 0 {
-            pointer_literal_len = 1;
-        }
-        let pointer_line = format!(
-            "{}{}",
-            " ".repeat(self.current_token.location().column),
-            "^".repeat(pointer_literal_len)
-        );
-
-        let msg = format!(
-            "Error at {}: expected token to be {:?}, got {:?} instead\n{}\n{}",
-            self.current_token.location(),
-            token_kind,
-            self.current_token.literal(),
-            self.lexer.current_line_input(),
-            pointer_line
-        );
+        let msg = self.make_error(token_kind, self.current_token.clone());
         self.errors.push(msg);
     }
 }
