@@ -1,15 +1,48 @@
 use crate::keywords;
 use core::fmt;
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone)]
 pub struct Token {
     kind: Kind,
     literal: Literal,
+    location: Location,
+}
+
+impl PartialEq<Token> for Token {
+    fn eq(&self, other: &Token) -> bool {
+        self.kind == other.kind
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct Location {
+    pub line: usize,
+    pub column: usize,
+}
+
+impl fmt::Display for Location {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "line {}, column {}", self.line + 1, self.column + 1)
+    }
+}
+
+impl Location {
+    pub fn new(line: usize, column: usize) -> Self {
+        Location { line, column }
+    }
+
+    pub fn zero() -> Self {
+        Location { line: 0, column: 0 }
+    }
 }
 
 impl Token {
-    pub fn new(kind: Kind, literal: Literal) -> Self {
-        Token { kind, literal }
+    pub fn new(kind: Kind, literal: Literal, location: Location) -> Self {
+        Token { kind, literal, location }
+    }
+
+    pub fn wrap(kind: Kind, literal: Literal) -> Self {
+        Token { kind, literal, location: Location::zero() }
     }
 
     pub fn kind(&self) -> Kind {
@@ -18,6 +51,10 @@ impl Token {
 
     pub fn literal(&self) -> &Literal {
         &self.literal
+    }
+
+    pub fn location(&self) -> &Location {
+        &self.location
     }
 }
 

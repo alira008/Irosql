@@ -28,8 +28,8 @@ impl<'a> Parser<'a> {
     pub fn new(lexer: lexer::Lexer<'a>) -> Self {
         let mut parser = Parser {
             lexer,
-            current_token: Token::new(Kind::Eof, Literal::new_string("")),
-            peek_token: Token::new(Kind::Eof, Literal::new_string("")),
+            current_token: Token::wrap(Kind::Eof, Literal::new_string("")),
+            peek_token: Token::wrap(Kind::Eof, Literal::new_string("")),
             errors: vec![],
         };
         parser.next_token();
@@ -575,7 +575,7 @@ impl<'a> Parser<'a> {
                     // go to select keyword
                     self.next_token();
 
-                    if let Some(statement) = self.parse_select_statement(){
+                    if let Some(statement) = self.parse_select_statement() {
                         let expression = Some(ast::Expression::Subquery(Box::new(statement)));
 
                         // check if we have a closing parenthesis
@@ -584,8 +584,7 @@ impl<'a> Parser<'a> {
                         }
 
                         return expression;
-                    }
-                    else {
+                    } else {
                         return None;
                     }
                 } else {
@@ -699,15 +698,6 @@ impl<'a> Parser<'a> {
         false
     }
 
-    fn peek_error(&mut self, token_kind: Kind) {
-        let msg = format!(
-            "expected next token to be {:?}, got {:?} instead",
-            token_kind,
-            self.peek_token.kind()
-        );
-        self.errors.push(msg);
-    }
-
     fn expect_current(&mut self, token_kind: Kind) -> bool {
         if self.current_token_is(token_kind) {
             true
@@ -728,11 +718,52 @@ impl<'a> Parser<'a> {
         false
     }
 
-    fn current_error(&mut self, token_kind: Kind) {
+    fn peek_error(&mut self, token_kind: Kind) {
+        let mut pointer_literal_len = match self.peek_token.literal() {
+            Literal::String(string) => string.len(),
+            Literal::Number(num) => num.to_string().len(),
+        };
+        if pointer_literal_len == 0 {
+            pointer_literal_len = 1;
+        }
+        let pointer_line = format!(
+            "{}{}",
+            " ".repeat(self.peek_token.location().column),
+            "^".repeat(pointer_literal_len)
+        );
+
         let msg = format!(
-            "expected token to be {:?}, got {:?} instead",
+            "Error at {}: expected next token to be {:?}, got {:?} instead\n{}\n{}",
+            self.peek_token.location(),
             token_kind,
-            self.current_token.kind()
+            self.peek_token.literal(),
+            self.lexer.current_line_input(),
+            pointer_line
+        );
+        self.errors.push(msg);
+    }
+
+    fn current_error(&mut self, token_kind: Kind) {
+        let mut pointer_literal_len = match self.current_token.literal() {
+            Literal::String(string) => string.len(),
+            Literal::Number(num) => num.to_string().len(),
+        };
+        if pointer_literal_len == 0 {
+            pointer_literal_len = 1;
+        }
+        let pointer_line = format!(
+            "{}{}",
+            " ".repeat(self.current_token.location().column),
+            "^".repeat(pointer_literal_len)
+        );
+
+        let msg = format!(
+            "Error at {}: expected token to be {:?}, got {:?} instead\n{}\n{}",
+            self.current_token.location(),
+            token_kind,
+            self.current_token.literal(),
+            self.lexer.current_line_input(),
+            pointer_line
         );
         self.errors.push(msg);
     }
@@ -752,36 +783,36 @@ mod tests {
             statements: vec![ast::Statement::Select(Box::new(ast::SelectStatement {
                 distinct: false,
                 top: None,
-                columns: vec![ast::Expression::Literal(Token::new(
+                columns: vec![ast::Expression::Literal(Token::wrap(
                     Kind::Ident,
                     Literal::new_string("name"),
                 ))],
                 into_table: None,
-                table: vec![ast::Expression::Literal(Token::new(
+                table: vec![ast::Expression::Literal(Token::wrap(
                     Kind::Ident,
                     Literal::new_string("users"),
                 ))],
                 where_clause: Some(ast::Expression::Binary {
-                    left: Box::new(ast::Expression::Literal(Token::new(
+                    left: Box::new(ast::Expression::Literal(Token::wrap(
                         Kind::Ident,
                         Literal::new_string("lastname"),
                     ))),
-                    operator: Token::new(Kind::GreaterThanEqual, Literal::new_string(">=")),
-                    right: Box::new(ast::Expression::Literal(Token::new(
+                    operator: Token::wrap(Kind::GreaterThanEqual, Literal::new_string(">=")),
+                    right: Box::new(ast::Expression::Literal(Token::wrap(
                         Kind::Ident,
                         Literal::new_string("'bob'"),
                     ))),
                 }),
                 order_by: vec![
                     ast::OrderByArg {
-                        column: ast::Expression::Literal(Token::new(
+                        column: ast::Expression::Literal(Token::wrap(
                             Kind::Ident,
                             Literal::new_string("dob"),
                         )),
                         asc: Some(true),
                     },
                     ast::OrderByArg {
-                        column: ast::Expression::Literal(Token::new(
+                        column: ast::Expression::Literal(Token::wrap(
                             Kind::Ident,
                             Literal::new_string("name"),
                         )),
@@ -791,14 +822,17 @@ mod tests {
                 group_by: vec![],
                 having: None,
                 offset: Some(ast::OffsetArg {
-                    value: ast::Expression::Literal(Token::new(
+                    value: ast::Expression::Literal(Token::wrap(
                         Kind::Number,
                         Literal::Number(10.0),
                     )),
                     row: ast::RowOrRows::Rows,
                 }),
                 fetch: Some(ast::FetchArg {
-                    value: ast::Expression::Literal(Token::new(Kind::Number, Literal::Number(5.0))),
+                    value: ast::Expression::Literal(Token::wrap(
+                        Kind::Number,
+                        Literal::Number(5.0),
+                    )),
                     first: ast::NextOrFirst::Next,
                     row: ast::RowOrRows::Rows,
                 }),
@@ -821,27 +855,27 @@ mod tests {
                 top: Some(ast::TopArg {
                     with_ties: false,
                     percent: true,
-                    quantity: ast::Expression::Literal(Token::new(
+                    quantity: ast::Expression::Literal(Token::wrap(
                         Kind::Number,
                         Literal::Number(50.0),
                     )),
                 }),
                 columns: vec![
-                    ast::Expression::Literal(Token::new(Kind::Ident, Literal::new_string("name"))),
-                    ast::Expression::Literal(Token::new(Kind::Number, Literal::Number(1.0))),
+                    ast::Expression::Literal(Token::wrap(Kind::Ident, Literal::new_string("name"))),
+                    ast::Expression::Literal(Token::wrap(Kind::Number, Literal::Number(1.0))),
                 ],
                 into_table: None,
-                table: vec![ast::Expression::Literal(Token::new(
+                table: vec![ast::Expression::Literal(Token::wrap(
                     Kind::Ident,
                     Literal::new_string("users"),
                 ))],
                 where_clause: Some(ast::Expression::Binary {
-                    left: Box::new(ast::Expression::Literal(Token::new(
+                    left: Box::new(ast::Expression::Literal(Token::wrap(
                         Kind::Ident,
                         Literal::new_string("lastname"),
                     ))),
-                    operator: Token::new(Kind::GreaterThanEqual, Literal::new_string(">=")),
-                    right: Box::new(ast::Expression::Literal(Token::new(
+                    operator: Token::wrap(Kind::GreaterThanEqual, Literal::new_string(">=")),
+                    right: Box::new(ast::Expression::Literal(Token::wrap(
                         Kind::Number,
                         Literal::Number(1.0),
                     ))),
@@ -869,33 +903,33 @@ mod tests {
                 distinct: false,
                 top: None,
                 columns: vec![
-                    ast::Expression::Literal(Token::new(Kind::Asterisk, Literal::new_string("*"))),
-                    ast::Expression::Literal(Token::new(Kind::Ident, Literal::new_string("name"))),
-                    ast::Expression::Literal(Token::new(
+                    ast::Expression::Literal(Token::wrap(Kind::Asterisk, Literal::new_string("*"))),
+                    ast::Expression::Literal(Token::wrap(Kind::Ident, Literal::new_string("name"))),
+                    ast::Expression::Literal(Token::wrap(
                         Kind::Ident,
                         Literal::new_string("firstname"),
                     )),
-                    ast::Expression::Literal(Token::new(
+                    ast::Expression::Literal(Token::wrap(
                         Kind::Ident,
                         Literal::new_string("lastname"),
                     )),
-                    ast::Expression::Literal(Token::new(
+                    ast::Expression::Literal(Token::wrap(
                         Kind::Ident,
                         Literal::new_string("[first]"),
                     )),
-                    ast::Expression::Literal(Token::new(Kind::Ident, Literal::new_string("dob"))),
+                    ast::Expression::Literal(Token::wrap(Kind::Ident, Literal::new_string("dob"))),
                 ],
                 into_table: Some(ast::IntoArg {
-                    table: ast::Expression::Literal(Token::new(
+                    table: ast::Expression::Literal(Token::wrap(
                         Kind::Ident,
                         Literal::new_string("NewUsers"),
                     )),
-                    file_group: Some(ast::Expression::Literal(Token::new(
+                    file_group: Some(ast::Expression::Literal(Token::wrap(
                         Kind::Ident,
                         Literal::new_string("testFileGroup"),
                     ))),
                 }),
-                table: vec![ast::Expression::Literal(Token::new(
+                table: vec![ast::Expression::Literal(Token::wrap(
                     Kind::Ident,
                     Literal::new_string("users"),
                 ))],
@@ -923,24 +957,24 @@ mod tests {
                 distinct: false,
                 top: None,
                 columns: vec![
-                    ast::Expression::Literal(Token::new(Kind::Asterisk, Literal::new_string("*"))),
-                    ast::Expression::Literal(Token::new(Kind::Ident, Literal::new_string("name"))),
-                    ast::Expression::Literal(Token::new(
+                    ast::Expression::Literal(Token::wrap(Kind::Asterisk, Literal::new_string("*"))),
+                    ast::Expression::Literal(Token::wrap(Kind::Ident, Literal::new_string("name"))),
+                    ast::Expression::Literal(Token::wrap(
                         Kind::Ident,
                         Literal::new_string("firstname"),
                     )),
-                    ast::Expression::Literal(Token::new(
+                    ast::Expression::Literal(Token::wrap(
                         Kind::Ident,
                         Literal::new_string("lastname"),
                     )),
-                    ast::Expression::Literal(Token::new(
+                    ast::Expression::Literal(Token::wrap(
                         Kind::Ident,
                         Literal::new_string("[first]"),
                     )),
-                    ast::Expression::Literal(Token::new(Kind::Ident, Literal::new_string("dob"))),
+                    ast::Expression::Literal(Token::wrap(Kind::Ident, Literal::new_string("dob"))),
                 ],
                 into_table: None,
-                table: vec![ast::Expression::Literal(Token::new(
+                table: vec![ast::Expression::Literal(Token::wrap(
                     Kind::Ident,
                     Literal::new_string("users"),
                 ))],
@@ -968,17 +1002,17 @@ mod tests {
                 distinct: false,
                 top: None,
                 columns: vec![
-                    ast::Expression::Literal(Token::new(Kind::Ident, Literal::new_string("name"))),
+                    ast::Expression::Literal(Token::wrap(Kind::Ident, Literal::new_string("name"))),
                     ast::Expression::Subquery(Box::new(ast::Statement::Select(Box::new(
                         ast::SelectStatement {
                             distinct: false,
                             top: None,
-                            columns: vec![ast::Expression::Literal(Token::new(
+                            columns: vec![ast::Expression::Literal(Token::wrap(
                                 Kind::Asterisk,
                                 Literal::new_string("*"),
                             ))],
                             into_table: None,
-                            table: vec![ast::Expression::Literal(Token::new(
+                            table: vec![ast::Expression::Literal(Token::wrap(
                                 Kind::Ident,
                                 Literal::new_string("MarketData"),
                             ))],
@@ -992,30 +1026,30 @@ mod tests {
                     )))),
                 ],
                 into_table: None,
-                table: vec![ast::Expression::Literal(Token::new(
+                table: vec![ast::Expression::Literal(Token::wrap(
                     Kind::Ident,
                     Literal::new_string("users"),
                 ))],
                 where_clause: Some(ast::Expression::Binary {
                     left: Box::new(ast::Expression::Binary {
-                        left: Box::new(ast::Expression::Literal(Token::new(
+                        left: Box::new(ast::Expression::Literal(Token::wrap(
                             Kind::Ident,
                             Literal::new_string("lastname"),
                         ))),
-                        operator: Token::new(Kind::Equal, Literal::new_string("=")),
-                        right: Box::new(ast::Expression::Literal(Token::new(
+                        operator: Token::wrap(Kind::Equal, Literal::new_string("=")),
+                        right: Box::new(ast::Expression::Literal(Token::wrap(
                             Kind::Ident,
                             Literal::new_string("'blah'"),
                         ))),
                     }),
-                    operator: Token::new(Kind::Keyword(Keyword::AND), Literal::new_string("AND")),
+                    operator: Token::wrap(Kind::Keyword(Keyword::AND), Literal::new_string("AND")),
                     right: Box::new(ast::Expression::Binary {
-                        left: Box::new(ast::Expression::Literal(Token::new(
+                        left: Box::new(ast::Expression::Literal(Token::wrap(
                             Kind::Ident,
                             Literal::new_string("firstname"),
                         ))),
-                        operator: Token::new(Kind::GreaterThan, Literal::new_string(">")),
-                        right: Box::new(ast::Expression::Literal(Token::new(
+                        operator: Token::wrap(Kind::GreaterThan, Literal::new_string(">")),
+                        right: Box::new(ast::Expression::Literal(Token::wrap(
                             Kind::Ident,
                             Literal::new_string("'hello'"),
                         ))),
@@ -1043,35 +1077,35 @@ mod tests {
             statements: vec![ast::Statement::Select(Box::new(ast::SelectStatement {
                 distinct: false,
                 top: None,
-                columns: vec![ast::Expression::Literal(Token::new(
+                columns: vec![ast::Expression::Literal(Token::wrap(
                     Kind::Ident,
                     Literal::new_string("name"),
                 ))],
                 into_table: None,
-                table: vec![ast::Expression::Literal(Token::new(
+                table: vec![ast::Expression::Literal(Token::wrap(
                     Kind::Ident,
                     Literal::new_string("users"),
                 ))],
                 where_clause: Some(ast::Expression::Binary {
                     left: Box::new(ast::Expression::Binary {
-                        left: Box::new(ast::Expression::Literal(Token::new(
+                        left: Box::new(ast::Expression::Literal(Token::wrap(
                             Kind::Ident,
                             Literal::new_string("lastname"),
                         ))),
-                        operator: Token::new(Kind::Equal, Literal::new_string("=")),
-                        right: Box::new(ast::Expression::Literal(Token::new(
+                        operator: Token::wrap(Kind::Equal, Literal::new_string("=")),
+                        right: Box::new(ast::Expression::Literal(Token::wrap(
                             Kind::Ident,
                             Literal::new_string("'blah'"),
                         ))),
                     }),
-                    operator: Token::new(Kind::Keyword(Keyword::AND), Literal::new_string("AND")),
+                    operator: Token::wrap(Kind::Keyword(Keyword::AND), Literal::new_string("AND")),
                     right: Box::new(ast::Expression::Binary {
-                        left: Box::new(ast::Expression::Literal(Token::new(
+                        left: Box::new(ast::Expression::Literal(Token::wrap(
                             Kind::Ident,
                             Literal::new_string("firstname"),
                         ))),
-                        operator: Token::new(Kind::GreaterThan, Literal::new_string(">")),
-                        right: Box::new(ast::Expression::Literal(Token::new(
+                        operator: Token::wrap(Kind::GreaterThan, Literal::new_string(">")),
+                        right: Box::new(ast::Expression::Literal(Token::wrap(
                             Kind::Ident,
                             Literal::new_string("'hello'"),
                         ))),
