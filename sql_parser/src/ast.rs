@@ -2,6 +2,20 @@ use core::fmt;
 
 use crate::token::Token;
 
+fn display_list_comma_separated<T>(list: &[T], f: &mut fmt::Formatter) -> fmt::Result
+where
+    T: fmt::Display,
+{
+    for (i, item) in list.iter().enumerate() {
+        write!(f, "{}", item)?;
+
+        if i < list.len() - 1 {
+            write!(f, ", ")?;
+        }
+    }
+    Ok(())
+}
+
 #[derive(Debug, PartialEq, Clone)]
 pub struct Query {
     pub statements: Vec<Statement>,
@@ -37,6 +51,7 @@ pub enum Expression {
         right: Box<Expression>,
     },
     Grouping(Box<Expression>),
+    Subquery(Box<Statement>),
 }
 
 impl fmt::Display for Expression {
@@ -50,13 +65,14 @@ impl fmt::Display for Expression {
             } => write!(f, "{} {} {}", left, operator, right),
             Expression::Unary { operator, right } => write!(f, "{} {}", operator, right),
             Expression::Grouping(expr) => write!(f, "({})", expr),
+            Expression::Subquery(subquery) => write!(f, "({})", subquery),
         }
     }
 }
 
 #[derive(Debug, PartialEq, Clone)]
 pub enum Statement {
-    Select(SelectStatement),
+    Select(Box<SelectStatement>),
 }
 
 impl fmt::Display for Statement {
@@ -72,6 +88,7 @@ pub struct SelectStatement {
     pub distinct: bool,
     pub top: Option<TopArg>,
     pub columns: Vec<Expression>,
+    pub into_table: Option<IntoArg>,
     pub table: Vec<Expression>,
     pub where_clause: Option<Expression>,
     pub group_by: Vec<Expression>,
@@ -90,90 +107,64 @@ impl SelectStatement {
 impl fmt::Display for SelectStatement {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         // SELECT
-        f.write_str("SELECT ")?;
+        f.write_str("SELECT")?;
 
         // DISTINCT
         if self.distinct {
-            f.write_str("DISTINCT ")?;
+            f.write_str(" DISTINCT")?;
         }
 
         // TOP
         if let Some(top) = &self.top {
-            write!(f, "{} ", top)?;
+            write!(f, " {}", top)?;
         }
 
         // COLUMNS
-        for (i, col) in self.columns.iter().enumerate() {
-            write!(f, "{}", col)?;
+        if !self.columns.is_empty() {
+            f.write_str(" ")?;
+            display_list_comma_separated(&self.columns, f)?;
+        }
 
-            // only print comma if not last column
-            if i < self.columns.len() - 1 {
-                f.write_str(",")?;
-            }
-
-            write!(f, " ")?;
+        if let Some(into_table) = &self.into_table {
+            write!(f, " INTO {} ", into_table)?;
         }
 
         // FROM
-        f.write_str("FROM ")?;
+        f.write_str(" FROM ")?;
 
         // TABLE
-        for (i, table) in self.table.iter().enumerate() {
-            write!(f, "{}", table)?;
-
-            // only print comma if not last table
-            if i < self.table.len() - 1 {
-                f.write_str(",")?;
-            }
-
-            write!(f, " ")?;
-        }
+        display_list_comma_separated(&self.table, f)?;
 
         // WHERE
         if let Some(where_clause) = &self.where_clause {
-            write!(f, "WHERE {} ", where_clause)?;
+            write!(f, " WHERE {}", where_clause)?;
         }
 
         // GROUPING
         if !self.group_by.is_empty() {
-            f.write_str("GROUP BY ")?;
-            for (i, group_by_expr) in self.group_by.iter().enumerate() {
-                write!(f, "{}", group_by_expr)?;
-
-                // only print comma if not last table
-                if i < self.table.len() - 1 {
-                    f.write_str(",")?;
-                }
-
-                write!(f, " ")?;
-            }
+            f.write_str(" GROUP BY ")?;
+            display_list_comma_separated(&self.group_by, f)?;
         }
 
         // HAVING
         if let Some(having_clause) = &self.having {
-            write!(f, "HAVING {} ", having_clause)?;
+            write!(f, " HAVING {}", having_clause)?;
         }
 
         // ORDER BY
         if !self.order_by.is_empty() {
-            f.write_str("ORDER BY ")?;
-            for (i, order_by) in self.order_by.iter().enumerate() {
-                write!(f, "{} ", order_by)?;
-                // only print comma if not last order_by
-                if i < self.order_by.len() - 1 {
-                    f.write_str(", ")?;
-                }
-            }
+            f.write_str(" ORDER BY ")?;
+            display_list_comma_separated(&self.order_by, f)?;
         }
 
         // OFFSET
         if let Some(offset) = &self.offset {
-            write!(f, "{} ", offset)?;
+            write!(f, " {}", offset)?;
         }
 
         // FETCH
         if let Some(fetch) = &self.fetch {
-            write!(f, "{} ", fetch)?;
+            write!(f, " {}", fetch)?;
         }
 
         Ok(())
@@ -194,6 +185,21 @@ impl fmt::Display for TopArg {
             (true, false) => write!(f, "TOP {} WITH TIES", self.quantity),
             (false, true) => write!(f, "TOP {} PERCENT", self.quantity),
             (false, false) => write!(f, "TOP {}", self.quantity),
+        }
+    }
+}
+
+#[derive(Debug, PartialEq, Clone)]
+pub struct IntoArg {
+    pub table: Expression,
+    pub file_group: Option<Expression>,
+}
+
+impl fmt::Display for IntoArg {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match &self.file_group {
+            Some(file_group) => write!(f, "INTO {} ON {}", self.table, file_group),
+            None => write!(f, "INTO {}", self.table),
         }
     }
 }

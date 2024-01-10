@@ -126,23 +126,27 @@ impl<'a> Parser<'a> {
 
         // check if the next token is an identifier
         // return an error if the next token is not an identifier or number
-        if !self.expect_peek_multi(
-            &[Kind::Number, Kind::Ident, Kind::Asterisk, Kind::LeftParen],
-            Kind::Ident,
-        ) {
-            // TODO: error handling
+        if !self.peek_token_is(Kind::Ident)
+            && !self.peek_token_is(Kind::Number)
+            && !self.peek_token_is(Kind::Asterisk)
+            && !self.peek_token_is(Kind::LeftParen)
+        {
+            self.peek_error(Kind::Ident);
             return None;
         }
 
         // get the columns to select
         // check if we saw a column after comma
         let mut column_seen = false;
-        while !self.current_token_is(Kind::Keyword(Keyword::FROM)) {
+        while !self.peek_token_is(Kind::Keyword(Keyword::FROM))
+            && !self.peek_token_is(Kind::Keyword(Keyword::INTO))
+        {
+            self.next_token();
             match self.current_token.kind() {
                 Kind::Comma => {
                     // check if we have an identifier after a comma
                     column_seen = false;
-                    self.next_token();
+                    // self.next_token();
                 }
                 _ => {
                     if let Some(expression) = self.parse_expression(PRECEDENCE_LOWEST) {
@@ -150,7 +154,7 @@ impl<'a> Parser<'a> {
                         column_seen = true;
 
                         statement.columns.push(expression);
-                        self.next_token();
+                        // self.next_token();
                     } else {
                         // TODO: error handling
                         self.current_error(Kind::Ident);
@@ -165,9 +169,40 @@ impl<'a> Parser<'a> {
             return None;
         }
 
+        // check if we have a INTO keyword
+        if self.peek_token_is(Kind::Keyword(Keyword::INTO)) {
+            // go to the INTO keyword
+            self.next_token();
+
+            // check if the next token is an identifier
+            if !self.expect_peek(Kind::Ident) {
+                return None;
+            }
+
+            let into_table = ast::Expression::Literal(self.current_token.clone());
+            let mut file_group: Option<ast::Expression> = None;
+
+            // check if we ON keyword
+            if self.peek_token_is(Kind::Keyword(Keyword::ON)) {
+                // skip the ON keyword
+                self.next_token();
+
+                // check if the next token is an identifier
+                if !self.expect_peek(Kind::Ident) {
+                    return None;
+                }
+
+                file_group = Some(ast::Expression::Literal(self.current_token.clone()));
+            }
+            statement.into_table = Some(ast::IntoArg {
+                table: into_table,
+                file_group,
+            });
+        }
+
         // at this point we should have a FROM keyword
         // but we should make sure
-        if !self.expect_current(Kind::Keyword(Keyword::FROM)) {
+        if !self.expect_peek(Kind::Keyword(Keyword::FROM)) {
             // TODO: error handling
             return None;
         }
@@ -211,18 +246,17 @@ impl<'a> Parser<'a> {
             }
         }
 
-            dbg!(&self.current_token);
         // check if we have any having clause
         if self.peek_token_is(Kind::Keyword(Keyword::HAVING)) {
             // skip the having keyword
             self.next_token();
             self.next_token();
-            dbg!(&self.current_token);
 
             statement.having = self.parse_expression(PRECEDENCE_LOWEST);
         }
 
         if self.peek_token_is(Kind::Keyword(Keyword::ORDER)) {
+            // go to order keyword
             self.next_token();
 
             let order_by_args = self.parse_order_by_args();
@@ -236,7 +270,7 @@ impl<'a> Parser<'a> {
         }
 
         if self.peek_token_is(Kind::Keyword(Keyword::OFFSET)) {
-            // go to offset
+            // go to offset keyword
             self.next_token();
 
             let offset = self.parse_offset();
@@ -248,7 +282,10 @@ impl<'a> Parser<'a> {
             statement.offset = offset;
         }
 
-        if self.current_token_is(Kind::Keyword(Keyword::FETCH)) {
+        if self.peek_token_is(Kind::Keyword(Keyword::FETCH)) {
+            // go to fetch keyword
+            self.next_token();
+
             let fetch = self.parse_fetch();
             if fetch.is_none() {
                 // TODO: error handling
@@ -259,7 +296,7 @@ impl<'a> Parser<'a> {
             self.next_token();
         }
 
-        Some(ast::Statement::Select(statement))
+        Some(ast::Statement::Select(Box::new(statement)))
     }
 
     fn parse_grouping(&mut self) -> Option<ast::Expression> {
@@ -307,7 +344,6 @@ impl<'a> Parser<'a> {
                 }
             };
             // consume the ROW or ROWS
-            self.next_token();
 
             Some(ast::OffsetArg { value: offset, row })
         } else {
@@ -433,9 +469,6 @@ impl<'a> Parser<'a> {
             return None;
         }
 
-        // skip the BY keyword
-        self.next_token();
-
         // get the columns to order by
         let mut order_by_args = vec![];
         // needed to check if we have an expression after comma
@@ -499,7 +532,7 @@ impl<'a> Parser<'a> {
         while precedence < self.peek_precedence() {
             // move to the next token
             self.next_token();
-                dbg!(&self.current_token);
+            dbg!(&self.current_token);
 
             match left_expression {
                 Some(expression) => {
@@ -537,7 +570,28 @@ impl<'a> Parser<'a> {
                     None
                 }
             }
-            Kind::LeftParen => self.parse_grouping(),
+            Kind::LeftParen => {
+                if self.peek_token_is(Kind::Keyword(Keyword::SELECT)) {
+                    // go to select keyword
+                    self.next_token();
+
+                    if let Some(statement) = self.parse_select_statement(){
+                        let expression = Some(ast::Expression::Subquery(Box::new(statement)));
+
+                        // check if we have a closing parenthesis
+                        if !self.expect_peek(Kind::RightParen) {
+                            return None;
+                        }
+
+                        return expression;
+                    }
+                    else {
+                        return None;
+                    }
+                } else {
+                    self.parse_grouping()
+                }
+            }
             _ => None,
         }
     }
@@ -695,13 +749,14 @@ mod tests {
         let query = parser.parse();
 
         let expected_query = ast::Query {
-            statements: vec![ast::Statement::Select(ast::SelectStatement {
+            statements: vec![ast::Statement::Select(Box::new(ast::SelectStatement {
                 distinct: false,
                 top: None,
                 columns: vec![ast::Expression::Literal(Token::new(
                     Kind::Ident,
                     Literal::new_string("name"),
                 ))],
+                into_table: None,
                 table: vec![ast::Expression::Literal(Token::new(
                     Kind::Ident,
                     Literal::new_string("users"),
@@ -747,7 +802,7 @@ mod tests {
                     first: ast::NextOrFirst::Next,
                     row: ast::RowOrRows::Rows,
                 }),
-            })],
+            }))],
         };
 
         assert_eq!(expected_query, query);
@@ -761,7 +816,7 @@ mod tests {
         let query = parser.parse();
 
         let expected_query = ast::Query {
-            statements: vec![ast::Statement::Select(ast::SelectStatement {
+            statements: vec![ast::Statement::Select(Box::new(ast::SelectStatement {
                 distinct: true,
                 top: Some(ast::TopArg {
                     with_ties: false,
@@ -775,6 +830,7 @@ mod tests {
                     ast::Expression::Literal(Token::new(Kind::Ident, Literal::new_string("name"))),
                     ast::Expression::Literal(Token::new(Kind::Number, Literal::Number(1.0))),
                 ],
+                into_table: None,
                 table: vec![ast::Expression::Literal(Token::new(
                     Kind::Ident,
                     Literal::new_string("users"),
@@ -795,21 +851,21 @@ mod tests {
                 order_by: vec![],
                 offset: None,
                 fetch: None,
-            })],
+            }))],
         };
 
         assert_eq!(expected_query, query);
     }
 
     #[test]
-    fn basic_select_statement() {
-        let input = "SELECT all *, name, firstname, lastname, [first], dob FROM users;";
+    fn basic_select_into_statement() {
+        let input = "SELECT all *, name, firstname, lastname, [first], dob INTO NewUsers ON testFileGroup FROM users;";
         let lexer = lexer::Lexer::new(input);
         let mut parser = Parser::new(lexer);
         let query = parser.parse();
 
         let expected_query = ast::Query {
-            statements: vec![ast::Statement::Select(ast::SelectStatement {
+            statements: vec![ast::Statement::Select(Box::new(ast::SelectStatement {
                 distinct: false,
                 top: None,
                 columns: vec![
@@ -829,6 +885,16 @@ mod tests {
                     )),
                     ast::Expression::Literal(Token::new(Kind::Ident, Literal::new_string("dob"))),
                 ],
+                into_table: Some(ast::IntoArg {
+                    table: ast::Expression::Literal(Token::new(
+                        Kind::Ident,
+                        Literal::new_string("NewUsers"),
+                    )),
+                    file_group: Some(ast::Expression::Literal(Token::new(
+                        Kind::Ident,
+                        Literal::new_string("testFileGroup"),
+                    ))),
+                }),
                 table: vec![ast::Expression::Literal(Token::new(
                     Kind::Ident,
                     Literal::new_string("users"),
@@ -839,27 +905,93 @@ mod tests {
                 order_by: vec![],
                 offset: None,
                 fetch: None,
-            })],
+            }))],
         };
 
         assert_eq!(expected_query, query);
     }
 
     #[test]
-    fn select_statement_with_where_clause() {
-        let input = "SELECT name FROM users where lastname = 'blah' AND firstname > 'hello';";
+    fn basic_select_statement() {
+        let input = "SELECT all *, name, firstname, lastname, [first], dob FROM users;";
         let lexer = lexer::Lexer::new(input);
         let mut parser = Parser::new(lexer);
         let query = parser.parse();
 
         let expected_query = ast::Query {
-            statements: vec![ast::Statement::Select(ast::SelectStatement {
+            statements: vec![ast::Statement::Select(Box::new(ast::SelectStatement {
                 distinct: false,
                 top: None,
-                columns: vec![ast::Expression::Literal(Token::new(
+                columns: vec![
+                    ast::Expression::Literal(Token::new(Kind::Asterisk, Literal::new_string("*"))),
+                    ast::Expression::Literal(Token::new(Kind::Ident, Literal::new_string("name"))),
+                    ast::Expression::Literal(Token::new(
+                        Kind::Ident,
+                        Literal::new_string("firstname"),
+                    )),
+                    ast::Expression::Literal(Token::new(
+                        Kind::Ident,
+                        Literal::new_string("lastname"),
+                    )),
+                    ast::Expression::Literal(Token::new(
+                        Kind::Ident,
+                        Literal::new_string("[first]"),
+                    )),
+                    ast::Expression::Literal(Token::new(Kind::Ident, Literal::new_string("dob"))),
+                ],
+                into_table: None,
+                table: vec![ast::Expression::Literal(Token::new(
                     Kind::Ident,
-                    Literal::new_string("name"),
+                    Literal::new_string("users"),
                 ))],
+                where_clause: None,
+                group_by: vec![],
+                having: None,
+                order_by: vec![],
+                offset: None,
+                fetch: None,
+            }))],
+        };
+
+        assert_eq!(expected_query, query);
+    }
+
+    #[test]
+    fn select_statement_with_subquery() {
+        let input = "SELECT name, (Select * from MarketData) FROM users where lastname = 'blah' AND firstname > 'hello';";
+        let lexer = lexer::Lexer::new(input);
+        let mut parser = Parser::new(lexer);
+        let query = parser.parse();
+
+        let expected_query = ast::Query {
+            statements: vec![ast::Statement::Select(Box::new(ast::SelectStatement {
+                distinct: false,
+                top: None,
+                columns: vec![
+                    ast::Expression::Literal(Token::new(Kind::Ident, Literal::new_string("name"))),
+                    ast::Expression::Subquery(Box::new(ast::Statement::Select(Box::new(
+                        ast::SelectStatement {
+                            distinct: false,
+                            top: None,
+                            columns: vec![ast::Expression::Literal(Token::new(
+                                Kind::Asterisk,
+                                Literal::new_string("*"),
+                            ))],
+                            into_table: None,
+                            table: vec![ast::Expression::Literal(Token::new(
+                                Kind::Ident,
+                                Literal::new_string("MarketData"),
+                            ))],
+                            where_clause: None,
+                            group_by: vec![],
+                            having: None,
+                            order_by: vec![],
+                            offset: None,
+                            fetch: None,
+                        },
+                    )))),
+                ],
+                into_table: None,
                 table: vec![ast::Expression::Literal(Token::new(
                     Kind::Ident,
                     Literal::new_string("users"),
@@ -894,7 +1026,63 @@ mod tests {
                 order_by: vec![],
                 offset: None,
                 fetch: None,
-            })],
+            }))],
+        };
+
+        assert_eq!(expected_query, query);
+    }
+
+    #[test]
+    fn select_statement_with_where_clause() {
+        let input = "SELECT name FROM users where lastname = 'blah' AND firstname > 'hello';";
+        let lexer = lexer::Lexer::new(input);
+        let mut parser = Parser::new(lexer);
+        let query = parser.parse();
+
+        let expected_query = ast::Query {
+            statements: vec![ast::Statement::Select(Box::new(ast::SelectStatement {
+                distinct: false,
+                top: None,
+                columns: vec![ast::Expression::Literal(Token::new(
+                    Kind::Ident,
+                    Literal::new_string("name"),
+                ))],
+                into_table: None,
+                table: vec![ast::Expression::Literal(Token::new(
+                    Kind::Ident,
+                    Literal::new_string("users"),
+                ))],
+                where_clause: Some(ast::Expression::Binary {
+                    left: Box::new(ast::Expression::Binary {
+                        left: Box::new(ast::Expression::Literal(Token::new(
+                            Kind::Ident,
+                            Literal::new_string("lastname"),
+                        ))),
+                        operator: Token::new(Kind::Equal, Literal::new_string("=")),
+                        right: Box::new(ast::Expression::Literal(Token::new(
+                            Kind::Ident,
+                            Literal::new_string("'blah'"),
+                        ))),
+                    }),
+                    operator: Token::new(Kind::Keyword(Keyword::AND), Literal::new_string("AND")),
+                    right: Box::new(ast::Expression::Binary {
+                        left: Box::new(ast::Expression::Literal(Token::new(
+                            Kind::Ident,
+                            Literal::new_string("firstname"),
+                        ))),
+                        operator: Token::new(Kind::GreaterThan, Literal::new_string(">")),
+                        right: Box::new(ast::Expression::Literal(Token::new(
+                            Kind::Ident,
+                            Literal::new_string("'hello'"),
+                        ))),
+                    }),
+                }),
+                group_by: vec![],
+                having: None,
+                order_by: vec![],
+                offset: None,
+                fetch: None,
+            }))],
         };
 
         assert_eq!(expected_query, query);
