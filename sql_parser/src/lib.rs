@@ -319,11 +319,6 @@ impl<'a> Parser<'a> {
     ) -> Option<ast::SelectItem> {
         // check if the previous expression is a wildcard
         if let Some(prev_expr) = prev_expr {
-            if matches!(prev_expr, ast::Expression::Literal(ref token) if token.kind() == Kind::Asterisk)
-            {
-                return Some(ast::SelectItem::Wildcard);
-            }
-
             // if previous exists but current doesn't,
             // then treat as if it is a column without an alias
             if let Some(cur_expr) = cur_expr {
@@ -334,12 +329,26 @@ impl<'a> Parser<'a> {
                         return None;
                     }
                 };
-                return Some(ast::SelectItem::WithAlias {
-                    expression: prev_expr.clone(),
-                    as_token,
-                    alias: literal,
-                });
+                if matches!(prev_expr, ast::Expression::Literal(ref token) if token.kind() == Kind::Asterisk)
+                {
+                    return Some(ast::SelectItem::WildcardWithAlias {
+                        expression: prev_expr.clone(),
+                        as_token,
+                        alias: literal,
+                    });
+                } else {
+                    return Some(ast::SelectItem::WithAlias {
+                        expression: prev_expr.clone(),
+                        as_token,
+                        alias: literal,
+                    });
+                }
             } else {
+                if matches!(prev_expr, ast::Expression::Literal(ref token) if token.kind() == Kind::Asterisk)
+                {
+                    return Some(ast::SelectItem::Wildcard);
+                }
+
                 return Some(ast::SelectItem::Unnamed(prev_expr.clone()));
             }
         } else {
@@ -381,9 +390,13 @@ impl<'a> Parser<'a> {
                     }
                 }
                 Kind::Keyword(Keyword::AS) => {
-                    if !self.expect_peek(Kind::Ident) {
+                    if !self.peek_token_is(Kind::Ident) {
+                        self.peek_msg_error(
+                            "expected token to either be a quoted string or identifier",
+                        );
                         return None;
                     }
+                    self.next_token();
 
                     if let Some(expression) = self.parse_expression(PRECEDENCE_LOWEST) {
                         // assume this is an alias
@@ -398,7 +411,9 @@ impl<'a> Parser<'a> {
                         }
                         comma_seen = false;
                     } else {
-                        self.current_error(Kind::Ident);
+                        self.peek_msg_error(
+                            "expected token to either be a quoted string or identifier",
+                        );
                         return None;
                     }
                 }

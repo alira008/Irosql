@@ -105,7 +105,7 @@ pub enum SelectItem {
         as_token: bool,
         alias: String,
     },
-    WildcardWithAlias(Expression),
+    WildcardWithAlias{expression: Expression, as_token: bool, alias: String}
 }
 
 impl fmt::Display for SelectItem {
@@ -128,9 +128,24 @@ impl fmt::Display for SelectItem {
 
                 write!(f, "{}", alias)?;
                 Ok(())
+            },
+            SelectItem::WildcardWithAlias{
+                expression,
+                as_token,
+                alias,
+            } => {
+                write!(f, "{}", expression)?;
+
+                if *as_token {
+                    write!(f, " AS ")?;
+                } else {
+                    write!(f, " ")?;
+                }
+
+                write!(f, "{}", alias)?;
+                Ok(())
             }
 
-            SelectItem::WildcardWithAlias(expr) => write!(f, "{}", expr),
         }
     }
 }
