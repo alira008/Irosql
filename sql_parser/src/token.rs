@@ -65,7 +65,7 @@ impl Token {
 impl fmt::Display for Token {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match &self.literal {
-            Literal::String(string) => write!(f, "{string}"),
+            Literal::String(string) | Literal::QuotedString(string) => write!(f, "{string}"),
             Literal::Number(number) => write!(f, "{number}"),
         }
     }
@@ -75,9 +75,23 @@ impl fmt::Display for Token {
 pub enum Literal {
     String(String),
     Number(f64),
+    QuotedString(String)
+}
+
+impl fmt::Display for Literal {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match &self {
+            Literal::String(string) => write!(f, "{}", string),
+            Literal::QuotedString(string) => write!(f, "'{}'", string),
+            Literal::Number(number) => write!(f, "{}", number),
+        }
+    }
 }
 
 impl Literal {
+    pub fn new_quoted(string: &str) -> Self {
+        Literal::QuotedString(string.to_string())
+    }
     pub fn new_string(string: &str) -> Self {
         Literal::String(string.to_string())
     }

@@ -184,7 +184,7 @@ impl<'a> Lexer<'a> {
                     // Read the identifier until the next non-alphabetic character
                     // We should be reading until the next '\''
                     if let Some(ident) = self.read_quoted_ident('\'') {
-                        Token::new(Kind::Ident, Literal::String(ident), self.current_location)
+                        Token::new(Kind::Ident, Literal::QuotedString(ident), self.current_location)
                     } else {
                         Token::new(
                             Kind::Illegal,
@@ -270,6 +270,8 @@ impl<'a> Lexer<'a> {
     }
 
     fn read_quoted_ident(&mut self, quote_char: char) -> Option<String> {
+        // skip the quote character
+        self.read_char();
         // Read the string until the next single quote
         // current position is at the quote character
         let start = self.current_position;

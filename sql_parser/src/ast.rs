@@ -6,11 +6,22 @@ fn display_list_comma_separated<T>(list: &[T], f: &mut fmt::Formatter) -> fmt::R
 where
     T: fmt::Display,
 {
+    display_list_delimiter_separated(list, ", ", f)
+}
+
+fn display_list_delimiter_separated<T>(
+    list: &[T],
+    delimeter: &str,
+    f: &mut fmt::Formatter,
+) -> fmt::Result
+where
+    T: fmt::Display,
+{
     for (i, item) in list.iter().enumerate() {
         write!(f, "{}", item)?;
 
         if i < list.len() - 1 {
-            write!(f, ", ")?;
+            write!(f, "{delimeter}")?;
         }
     }
     Ok(())
@@ -41,6 +52,7 @@ impl fmt::Display for Query {
 #[derive(Debug, PartialEq, Clone)]
 pub enum Expression {
     Literal(Token),
+    CompoundLiteral(Vec<Token>),
     Binary {
         left: Box<Expression>,
         operator: Token,
@@ -58,6 +70,7 @@ impl fmt::Display for Expression {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match &self {
             Expression::Literal(token) => write!(f, "{}", token),
+            Expression::CompoundLiteral(tokens) => display_list_delimiter_separated(tokens, ".", f),
             Expression::Binary {
                 left,
                 operator,
@@ -83,11 +96,50 @@ impl fmt::Display for Statement {
     }
 }
 
+#[derive(Debug, PartialEq, Clone)]
+pub enum SelectItem {
+    Wildcard,
+    Unnamed(Expression),
+    WithAlias {
+        expression: Expression,
+        as_token: bool,
+        alias: String,
+    },
+    WildcardWithAlias(Expression),
+}
+
+impl fmt::Display for SelectItem {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match &self {
+            SelectItem::Wildcard => write!(f, "*"),
+            SelectItem::Unnamed(expr) => write!(f, "{}", expr),
+            SelectItem::WithAlias {
+                expression,
+                as_token,
+                alias,
+            } => {
+                write!(f, "{}", expression)?;
+
+                if *as_token {
+                    write!(f, " AS ")?;
+                } else {
+                    write!(f, " ")?;
+                }
+
+                write!(f, "{}", alias)?;
+                Ok(())
+            }
+
+            SelectItem::WildcardWithAlias(expr) => write!(f, "{}", expr),
+        }
+    }
+}
+
 #[derive(Debug, PartialEq, Clone, Default)]
 pub struct SelectStatement {
     pub distinct: bool,
     pub top: Option<TopArg>,
-    pub columns: Vec<Expression>,
+    pub columns: Vec<SelectItem>,
     pub into_table: Option<IntoArg>,
     pub table: Vec<Expression>,
     pub where_clause: Option<Expression>,

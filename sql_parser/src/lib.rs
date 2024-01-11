@@ -124,48 +124,10 @@ impl<'a> Parser<'a> {
             }
         }
 
-        // check if the next token is an identifier
-        // return an error if the next token is not an identifier or number
-        if !self.peek_token_is(Kind::Ident)
-            && !self.peek_token_is(Kind::Number)
-            && !self.peek_token_is(Kind::Asterisk)
-            && !self.peek_token_is(Kind::LeftParen)
-        {
-            self.peek_error(Kind::Ident);
-            return None;
-        }
-
-        // get the columns to select
-        // check if we saw a column after comma
-        let mut column_seen = false;
-        while !self.peek_token_is(Kind::Keyword(Keyword::FROM))
-            && !self.peek_token_is(Kind::Keyword(Keyword::INTO))
-            && !self.peek_token_is(Kind::Eof)
-        {
-            self.next_token();
-            match self.current_token.kind() {
-                Kind::Comma => {
-                    // check if we have an identifier after a comma
-                    column_seen = false;
-                    // self.next_token();
-                }
-                _ => {
-                    if let Some(expression) = self.parse_expression(PRECEDENCE_LOWEST) {
-                        // confirm we saw a column
-                        column_seen = true;
-
-                        statement.columns.push(expression);
-                        // self.next_token();
-                    } else {
-                        self.current_error(Kind::Ident);
-                        return None;
-                    }
-                }
-            }
-        }
-        // check if we saw a column after comma
-        if !column_seen {
-            self.current_msg_error("expected column after comma");
+        // check for columns
+        if let Some(select_items) = self.parse_select_items() {
+            statement.columns = select_items;
+        } else {
             return None;
         }
 
@@ -209,7 +171,13 @@ impl<'a> Parser<'a> {
             .columns
             .iter()
             .filter(|ex| !match ex {
-                ast::Expression::Literal(token) => matches!(token.kind(), Kind::Number),
+                ast::SelectItem::Unnamed(expression)
+                | ast::SelectItem::WithAlias { expression, .. } => match expression {
+                    ast::Expression::Literal(token) => {
+                        matches!(token.kind(), Kind::Number | Kind::Ident)
+                    }
+                    _ => false,
+                },
                 _ => false,
             })
             .count();
@@ -341,6 +309,136 @@ impl<'a> Parser<'a> {
         }
 
         Some(ast::Statement::Select(Box::new(statement)))
+    }
+
+    fn parse_select_item(
+        &mut self,
+        prev_expr: Option<&ast::Expression>,
+        cur_expr: Option<&ast::Expression>,
+        as_token: bool,
+    ) -> Option<ast::SelectItem> {
+        // check if the previous expression is a wildcard
+        if let Some(prev_expr) = prev_expr {
+            if matches!(prev_expr, ast::Expression::Literal(ref token) if token.kind() == Kind::Asterisk)
+            {
+                return Some(ast::SelectItem::Wildcard);
+            }
+
+            // if previous exists but current doesn't,
+            // then treat as if it is a column without an alias
+            if let Some(cur_expr) = cur_expr {
+                let literal = match cur_expr {
+                    ast::Expression::Literal(token) => token.literal().to_string(),
+                    _ => {
+                        self.current_msg_error("expected ALIAS to be a STRING");
+                        return None;
+                    }
+                };
+                return Some(ast::SelectItem::WithAlias {
+                    expression: prev_expr.clone(),
+                    as_token,
+                    alias: literal,
+                });
+            } else {
+                return Some(ast::SelectItem::Unnamed(prev_expr.clone()));
+            }
+        } else {
+            return None;
+        }
+    }
+
+    fn parse_select_items(&mut self) -> Option<Vec<ast::SelectItem>> {
+        // check if the next token is an identifier
+        // return an error if the next token is not an identifier or number
+        if !self.peek_token_is(Kind::Ident)
+            && !self.peek_token_is(Kind::Number)
+            && !self.peek_token_is(Kind::Asterisk)
+            && !self.peek_token_is(Kind::LeftParen)
+        {
+            self.peek_error(Kind::Ident);
+            return None;
+        }
+
+        // get the columns to select
+        // check if the last token we saw was a comma
+        let mut columns: Vec<ast::SelectItem> = vec![];
+        let mut previous_expr: Option<ast::Expression> = None;
+        let mut comma_seen = false;
+        while !self.peek_token_is(Kind::Keyword(Keyword::FROM))
+            && !self.peek_token_is(Kind::Keyword(Keyword::INTO))
+            && !self.peek_token_is(Kind::Eof)
+        {
+            self.next_token();
+            match self.current_token.kind() {
+                Kind::Comma => {
+                    comma_seen = true;
+
+                    if let Some(select_item) =
+                        self.parse_select_item(previous_expr.as_ref(), None, false)
+                    {
+                        previous_expr.take();
+                        columns.push(select_item);
+                    }
+                }
+                Kind::Keyword(Keyword::AS) => {
+                    if !self.expect_peek(Kind::Ident) {
+                        return None;
+                    }
+
+                    if let Some(expression) = self.parse_expression(PRECEDENCE_LOWEST) {
+                        // assume this is an alias
+                        // and previous expression is an identifier
+                        if let Some(select_item) =
+                            self.parse_select_item(previous_expr.as_ref(), Some(&expression), true)
+                        {
+                            previous_expr.take();
+                            columns.push(select_item);
+                        } else {
+                            previous_expr = Some(expression.clone());
+                        }
+                        comma_seen = false;
+                    } else {
+                        self.current_error(Kind::Ident);
+                        return None;
+                    }
+                }
+                _ => {
+                    if let Some(expression) = self.parse_expression(PRECEDENCE_LOWEST) {
+                        // assume this is an alias
+                        // and previous expression is an identifier
+                        if let Some(select_item) =
+                            self.parse_select_item(previous_expr.as_ref(), Some(&expression), false)
+                        {
+                            previous_expr.take();
+                            columns.push(select_item);
+                        } else {
+                            previous_expr = Some(expression.clone());
+                        }
+                        comma_seen = false;
+                    } else {
+                        self.current_error(Kind::Ident);
+                        return None;
+                    }
+                }
+            }
+        }
+
+        if let Some(select_item) = self.parse_select_item(previous_expr.as_ref(), None, false) {
+            columns.push(select_item);
+        }
+
+        match (columns.len(), comma_seen) {
+            (0, _) => {
+                self.peek_msg_error("expected SELECT items in SELECT expression");
+                None
+            }
+            (_, true) => {
+                self.peek_msg_error("expected SELECT item after COMMA in SELECT expression");
+                None
+            }
+
+            _ => Some(columns),
+        }
     }
 
     fn parse_grouping(&mut self) -> Option<ast::Expression> {
@@ -571,7 +669,6 @@ impl<'a> Parser<'a> {
         while precedence < self.peek_precedence() {
             // move to the next token
             self.next_token();
-            dbg!(&self.current_token);
 
             match left_expression {
                 Some(expression) => {
@@ -657,7 +754,6 @@ impl<'a> Parser<'a> {
                 let operator = self.current_token.clone();
                 let precedence = self.current_precedence();
                 self.next_token();
-                dbg!(&self.current_token);
 
                 // parse the expression to the right of the operator
                 if let Some(right_expression) = self.parse_expression(precedence) {
@@ -759,7 +855,7 @@ impl<'a> Parser<'a> {
 
     fn make_string_error(&mut self, msg: &str, token: Token) -> String {
         let mut pointer_literal_len = match token.literal() {
-            Literal::String(string) => string.len(),
+            Literal::String(string) | Literal::QuotedString(string) => string.len(),
             Literal::Number(num) => num.to_string().len(),
         };
         if pointer_literal_len == 0 {
@@ -783,7 +879,7 @@ impl<'a> Parser<'a> {
 
     fn make_error(&mut self, token_kind: Kind, token: Token) -> String {
         let mut pointer_literal_len = match token.literal() {
-            Literal::String(string) => string.len(),
+            Literal::String(string) | Literal::QuotedString(string) => string.len(),
             Literal::Number(num) => num.to_string().len(),
         };
         if pointer_literal_len == 0 {
@@ -843,9 +939,8 @@ mod tests {
             statements: vec![ast::Statement::Select(Box::new(ast::SelectStatement {
                 distinct: false,
                 top: None,
-                columns: vec![ast::Expression::Literal(Token::wrap(
-                    Kind::Ident,
-                    Literal::new_string("name"),
+                columns: vec![ast::SelectItem::Unnamed(ast::Expression::Literal(
+                    Token::wrap(Kind::Ident, Literal::new_string("name")),
                 ))],
                 into_table: None,
                 table: vec![ast::Expression::Literal(Token::wrap(
@@ -921,8 +1016,14 @@ mod tests {
                     )),
                 }),
                 columns: vec![
-                    ast::Expression::Literal(Token::wrap(Kind::Ident, Literal::new_string("name"))),
-                    ast::Expression::Literal(Token::wrap(Kind::Number, Literal::Number(1.0))),
+                    ast::SelectItem::Unnamed(ast::Expression::Literal(Token::wrap(
+                        Kind::Ident,
+                        Literal::new_string("name"),
+                    ))),
+                    ast::SelectItem::Unnamed(ast::Expression::Literal(Token::wrap(
+                        Kind::Number,
+                        Literal::Number(1.0),
+                    ))),
                 ],
                 into_table: None,
                 table: vec![ast::Expression::Literal(Token::wrap(
@@ -963,21 +1064,27 @@ mod tests {
                 distinct: false,
                 top: None,
                 columns: vec![
-                    ast::Expression::Literal(Token::wrap(Kind::Asterisk, Literal::new_string("*"))),
-                    ast::Expression::Literal(Token::wrap(Kind::Ident, Literal::new_string("name"))),
-                    ast::Expression::Literal(Token::wrap(
+                    ast::SelectItem::Wildcard,
+                    ast::SelectItem::Unnamed(ast::Expression::Literal(Token::wrap(
+                        Kind::Ident,
+                        Literal::new_string("name"),
+                    ))),
+                    ast::SelectItem::Unnamed(ast::Expression::Literal(Token::wrap(
                         Kind::Ident,
                         Literal::new_string("firstname"),
-                    )),
-                    ast::Expression::Literal(Token::wrap(
+                    ))),
+                    ast::SelectItem::Unnamed(ast::Expression::Literal(Token::wrap(
                         Kind::Ident,
                         Literal::new_string("lastname"),
-                    )),
-                    ast::Expression::Literal(Token::wrap(
+                    ))),
+                    ast::SelectItem::Unnamed(ast::Expression::Literal(Token::wrap(
                         Kind::Ident,
                         Literal::new_string("[first]"),
-                    )),
-                    ast::Expression::Literal(Token::wrap(Kind::Ident, Literal::new_string("dob"))),
+                    ))),
+                    ast::SelectItem::Unnamed(ast::Expression::Literal(Token::wrap(
+                        Kind::Ident,
+                        Literal::new_string("dob"),
+                    ))),
                 ],
                 into_table: Some(ast::IntoArg {
                     table: ast::Expression::Literal(Token::wrap(
@@ -1017,21 +1124,27 @@ mod tests {
                 distinct: false,
                 top: None,
                 columns: vec![
-                    ast::Expression::Literal(Token::wrap(Kind::Asterisk, Literal::new_string("*"))),
-                    ast::Expression::Literal(Token::wrap(Kind::Ident, Literal::new_string("name"))),
-                    ast::Expression::Literal(Token::wrap(
+                    ast::SelectItem::Wildcard,
+                    ast::SelectItem::Unnamed(ast::Expression::Literal(Token::wrap(
+                        Kind::Ident,
+                        Literal::new_string("name"),
+                    ))),
+                    ast::SelectItem::Unnamed(ast::Expression::Literal(Token::wrap(
                         Kind::Ident,
                         Literal::new_string("firstname"),
-                    )),
-                    ast::Expression::Literal(Token::wrap(
+                    ))),
+                    ast::SelectItem::Unnamed(ast::Expression::Literal(Token::wrap(
                         Kind::Ident,
                         Literal::new_string("lastname"),
-                    )),
-                    ast::Expression::Literal(Token::wrap(
+                    ))),
+                    ast::SelectItem::Unnamed(ast::Expression::Literal(Token::wrap(
                         Kind::Ident,
                         Literal::new_string("[first]"),
-                    )),
-                    ast::Expression::Literal(Token::wrap(Kind::Ident, Literal::new_string("dob"))),
+                    ))),
+                    ast::SelectItem::Unnamed(ast::Expression::Literal(Token::wrap(
+                        Kind::Ident,
+                        Literal::new_string("dob"),
+                    ))),
                 ],
                 into_table: None,
                 table: vec![ast::Expression::Literal(Token::wrap(
@@ -1062,15 +1175,15 @@ mod tests {
                 distinct: false,
                 top: None,
                 columns: vec![
-                    ast::Expression::Literal(Token::wrap(Kind::Ident, Literal::new_string("name"))),
-                    ast::Expression::Subquery(Box::new(ast::Statement::Select(Box::new(
-                        ast::SelectStatement {
+                    ast::SelectItem::Unnamed(ast::Expression::Literal(Token::wrap(
+                        Kind::Ident,
+                        Literal::new_string("name"),
+                    ))),
+                    ast::SelectItem::Unnamed(ast::Expression::Subquery(Box::new(
+                        ast::Statement::Select(Box::new(ast::SelectStatement {
                             distinct: false,
                             top: None,
-                            columns: vec![ast::Expression::Literal(Token::wrap(
-                                Kind::Asterisk,
-                                Literal::new_string("*"),
-                            ))],
+                            columns: vec![ast::SelectItem::Wildcard],
                             into_table: None,
                             table: vec![ast::Expression::Literal(Token::wrap(
                                 Kind::Ident,
@@ -1082,8 +1195,8 @@ mod tests {
                             order_by: vec![],
                             offset: None,
                             fetch: None,
-                        },
-                    )))),
+                        })),
+                    ))),
                 ],
                 into_table: None,
                 table: vec![ast::Expression::Literal(Token::wrap(
@@ -1137,9 +1250,8 @@ mod tests {
             statements: vec![ast::Statement::Select(Box::new(ast::SelectStatement {
                 distinct: false,
                 top: None,
-                columns: vec![ast::Expression::Literal(Token::wrap(
-                    Kind::Ident,
-                    Literal::new_string("name"),
+                columns: vec![ast::SelectItem::Unnamed(ast::Expression::Literal(
+                    Token::wrap(Kind::Ident, Literal::new_string("name")),
                 ))],
                 into_table: None,
                 table: vec![ast::Expression::Literal(Token::wrap(
