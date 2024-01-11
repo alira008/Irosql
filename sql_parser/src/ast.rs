@@ -130,10 +130,12 @@ impl fmt::Display for SelectStatement {
         }
 
         // FROM
-        f.write_str(" FROM ")?;
+        if !self.table.is_empty() {
+            f.write_str(" FROM ")?;
 
-        // TABLE
-        display_list_comma_separated(&self.table, f)?;
+            // TABLE
+            display_list_comma_separated(&self.table, f)?;
+        }
 
         // WHERE
         if let Some(where_clause) = &self.where_clause {

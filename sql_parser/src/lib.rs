@@ -140,6 +140,7 @@ impl<'a> Parser<'a> {
         let mut column_seen = false;
         while !self.peek_token_is(Kind::Keyword(Keyword::FROM))
             && !self.peek_token_is(Kind::Keyword(Keyword::INTO))
+            && !self.peek_token_is(Kind::Eof)
         {
             self.next_token();
             match self.current_token.kind() {
@@ -199,20 +200,52 @@ impl<'a> Parser<'a> {
             });
         }
 
-        // at this point we should have a FROM keyword
-        // but we should make sure
-        if !self.expect_peek(Kind::Keyword(Keyword::FROM)) {
-            return None;
-        }
+        // two cases:
+        // normal query where we select from a table
+        // or a query where we select numbers|quoted string (this one doesn't require FROM keyword)
+        // Note: we should have one or more columns by the time we get here
+        // check if we have a quoted_strings or numbers only
+        let number_of_non_literal_tokens = statement
+            .columns
+            .iter()
+            .filter(|ex| !match ex {
+                ast::Expression::Literal(token) => matches!(token.kind(), Kind::Number),
+                _ => false,
+            })
+            .count();
 
-        // get the table to select from
-        // check if the next token is an identifier
-        if !self.expect_peek(Kind::Ident) {
-            return None;
+        if number_of_non_literal_tokens > 0 {
+            // at this point we should have a FROM keyword
+            // but we should make sure
+            if !self.expect_peek(Kind::Keyword(Keyword::FROM)) {
+                return None;
+            }
+
+            // get the table name to select from
+            // check if the next token is an identifier
+            if !self.expect_peek(Kind::Ident) {
+                return None;
+            } else {
+                statement
+                    .table
+                    .push(ast::Expression::Literal(self.current_token.clone()));
+            }
         } else {
-            statement
-                .table
-                .push(ast::Expression::Literal(self.current_token.clone()));
+            // check if we have a FROM keyword
+            if self.peek_token_is(Kind::Keyword(Keyword::FROM)) {
+                // go to the FROM keyword
+                self.next_token();
+
+                // get the table name to select from
+                // check if the next token is an identifier
+                if !self.expect_peek(Kind::Ident) {
+                    return None;
+                } else {
+                    statement
+                        .table
+                        .push(ast::Expression::Literal(self.current_token.clone()));
+                }
+            }
         }
 
         // check if we have any where clause
@@ -222,7 +255,10 @@ impl<'a> Parser<'a> {
             self.next_token();
 
             let expression = self.parse_expression(PRECEDENCE_LOWEST);
-            if expression.as_ref().is_some_and(|ex| *ex == ast::Expression::Literal(token::Token::wrap_kind(Kind::Ident))) {
+            if expression
+                .as_ref()
+                .is_some_and(|ex| !matches!(*ex, ast::Expression::Binary { .. }))
+            {
                 self.current_msg_error("expected expression after WHERE keyword");
             }
             if expression.is_none() {
@@ -241,7 +277,6 @@ impl<'a> Parser<'a> {
             if let Some(expression) = self.parse_group_by_args() {
                 statement.group_by = expression;
             } else {
-                self.current_msg_error("expected expression after GROUP BY keyword");
                 return None;
             }
         }
@@ -253,6 +288,12 @@ impl<'a> Parser<'a> {
             self.next_token();
 
             let expression = self.parse_expression(PRECEDENCE_LOWEST);
+            if expression
+                .as_ref()
+                .is_some_and(|ex| !matches!(*ex, ast::Expression::Binary { .. }))
+            {
+                self.current_msg_error("expected expression after HAVING keyword");
+            }
             if expression.is_none() {
                 self.current_msg_error("expected expression after HAVING keyword");
                 return None;
@@ -261,6 +302,7 @@ impl<'a> Parser<'a> {
             statement.having = expression;
         }
 
+        // order by expression
         if self.peek_token_is(Kind::Keyword(Keyword::ORDER)) {
             // go to order keyword
             self.next_token();
@@ -268,37 +310,34 @@ impl<'a> Parser<'a> {
             if let Some(args) = self.parse_order_by_args() {
                 statement.order_by = args;
             } else {
-                self.current_msg_error("expected expression after ORDER BY keyword");
-                return None;
-            }
-        }
-
-        if self.peek_token_is(Kind::Keyword(Keyword::OFFSET)) {
-            // go to offset keyword
-            self.next_token();
-
-            let offset = self.parse_offset();
-            if offset.is_none() {
-                self.current_msg_error("expected expression after OFFSET keyword");
                 return None;
             }
 
-            statement.offset = offset;
-        }
+            if self.peek_token_is(Kind::Keyword(Keyword::OFFSET)) {
+                // go to offset keyword
+                self.next_token();
 
-        if self.peek_token_is(Kind::Keyword(Keyword::FETCH)) {
-            // go to fetch keyword
-            self.next_token();
+                let offset = self.parse_offset();
+                if offset.is_none() {
+                    return None;
+                }
 
-            let fetch = self.parse_fetch();
-            if fetch.is_none() {
-                // TODO: error handling
-                self.current_msg_error("expected expression after FETCH keyword");
-                return None;
+                statement.offset = offset;
+
+                // check if we have a FETCH keyword
+                if self.peek_token_is(Kind::Keyword(Keyword::FETCH)) {
+                    // go to fetch keyword
+                    self.next_token();
+
+                    let fetch = self.parse_fetch();
+                    if fetch.is_none() {
+                        return None;
+                    }
+
+                    statement.fetch = fetch;
+                    self.next_token();
+                }
             }
-
-            statement.fetch = fetch;
-            self.next_token();
         }
 
         Some(ast::Statement::Select(Box::new(statement)))
@@ -349,11 +388,9 @@ impl<'a> Parser<'a> {
                 }
             };
             // consume the ROW or ROWS
-
             Some(ast::OffsetArg { value: offset, row })
         } else {
-            // TODO: error handling
-            self.current_error(Kind::Ident);
+            self.current_msg_error("expected expression after OFFSET keyword");
             None
         }
     }
@@ -364,14 +401,12 @@ impl<'a> Parser<'a> {
             &[Kind::Keyword(Keyword::NEXT), Kind::Keyword(Keyword::FIRST)],
             Kind::Keyword(Keyword::NEXT),
         ) {
-            // TODO: error handling
             return None;
         }
         let first = match self.current_token.kind() {
             Kind::Keyword(Keyword::FIRST) => ast::NextOrFirst::First,
             Kind::Keyword(Keyword::NEXT) => ast::NextOrFirst::Next,
             _ => {
-                // TODO: error handling
                 self.current_error(Kind::Keyword(Keyword::NEXT));
                 return None;
             }
@@ -394,7 +429,6 @@ impl<'a> Parser<'a> {
                 Kind::Keyword(Keyword::ROW) => ast::RowOrRows::Row,
                 Kind::Keyword(Keyword::ROWS) => ast::RowOrRows::Rows,
                 _ => {
-                    // TODO: error handling
                     self.current_error(Kind::Keyword(Keyword::ROW));
                     return None;
                 }
@@ -402,7 +436,6 @@ impl<'a> Parser<'a> {
 
             // check if we have the keyword ONLY
             if !self.expect_peek(Kind::Keyword(Keyword::ONLY)) {
-                // TODO: error handling
                 return None;
             }
             // consume the ROW or ROWS
@@ -414,7 +447,7 @@ impl<'a> Parser<'a> {
                 first,
             })
         } else {
-            // TODO: error handling
+            self.peek_msg_error("expected FETCH expression after FETCH FIRST|NEXT");
             None
         }
     }
@@ -427,7 +460,7 @@ impl<'a> Parser<'a> {
         }
 
         // get the columns to order by
-        let mut group_by_args = vec![];
+        let mut args = vec![];
         // needed to check if we have an expression after comma
         let mut seen_arg = false;
         while !self.peek_token_is(Kind::Keyword(Keyword::HAVING))
@@ -444,7 +477,7 @@ impl<'a> Parser<'a> {
                     if let Some(expression) = self.parse_expression(PRECEDENCE_LOWEST) {
                         // we have seen an group_by_arg
                         seen_arg = true;
-                        group_by_args.push(expression);
+                        args.push(expression);
                     } else {
                         // TODO: error handling
                         self.current_error(Kind::Ident);
@@ -454,16 +487,17 @@ impl<'a> Parser<'a> {
             }
         }
 
-        if !seen_arg {
-            // TODO: error handling
-            self.current_error(Kind::Ident);
-            return None;
-        }
+        match (args.len(), seen_arg) {
+            (0, _) => {
+                self.peek_msg_error("expected GROUP BY expression after GROUP BY");
+                None
+            }
+            (_, false) => {
+                self.peek_msg_error("expected GROUP BY expression after COMMA");
+                None
+            }
 
-        match group_by_args.len() {
-            // TODO: error handling
-            0 => None,
-            _ => Some(group_by_args),
+            _ => Some(args),
         }
     }
 
@@ -507,7 +541,6 @@ impl<'a> Parser<'a> {
                             asc: is_asc,
                         });
                     } else {
-                        // TODO: error handling
                         self.current_error(Kind::Ident);
                         return None;
                     }
@@ -515,15 +548,16 @@ impl<'a> Parser<'a> {
             }
         }
 
-        if !seen_order_by_arg {
-            // TODO: error handling
-            self.current_error(Kind::Ident);
-            return None;
-        }
+        match (order_by_args.len(), seen_order_by_arg) {
+            (0, _) => {
+                self.peek_msg_error("expected ORDERED BY expression after ORDERED BY");
+                None
+            }
+            (_, false) => {
+                self.peek_msg_error("expected ORDERED BY expression after COMMA");
+                None
+            }
 
-        match order_by_args.len() {
-            // TODO: error handling
-            0 => None,
             _ => Some(order_by_args),
         }
     }
@@ -771,7 +805,7 @@ impl<'a> Parser<'a> {
         )
     }
 
-    # [allow(dead_code)]
+    #[allow(dead_code)]
     fn peek_msg_error(&mut self, msg: &str) {
         let msg = self.make_string_error(msg, self.peek_token.clone());
 
