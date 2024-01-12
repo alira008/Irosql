@@ -105,7 +105,11 @@ pub enum SelectItem {
         as_token: bool,
         alias: String,
     },
-    WildcardWithAlias{expression: Expression, as_token: bool, alias: String}
+    WildcardWithAlias {
+        expression: Expression,
+        as_token: bool,
+        alias: String,
+    },
 }
 
 impl fmt::Display for SelectItem {
@@ -128,8 +132,8 @@ impl fmt::Display for SelectItem {
 
                 write!(f, "{}", alias)?;
                 Ok(())
-            },
-            SelectItem::WildcardWithAlias{
+            }
+            SelectItem::WildcardWithAlias {
                 expression,
                 as_token,
                 alias,
@@ -145,7 +149,6 @@ impl fmt::Display for SelectItem {
                 write!(f, "{}", alias)?;
                 Ok(())
             }
-
         }
     }
 }
@@ -271,6 +274,44 @@ impl fmt::Display for IntoArg {
             None => write!(f, "INTO {}", self.table),
         }
     }
+}
+
+#[derive(Debug, PartialEq, Clone)]
+pub enum TableSource {
+    Table {
+        name: Expression,
+        alias: Option<String>,
+    },
+    Derived,
+    Pivot,
+    Unpivot,
+    TableValuedFunction {
+        expression: Expression,
+        alias: Option<String>,
+    },
+}
+
+#[derive(Debug, PartialEq, Clone)]
+pub enum JoinType {
+    Inner(Expression),
+    Left(Expression),
+    Right(Expression),
+    Full(Expression),
+    CrossApply,
+    OuterApply,
+}
+
+#[derive(Debug, PartialEq, Clone)]
+pub struct Join {
+    pub join_type: JoinType,
+    pub table: TableArg,
+    pub condition: Option<Expression>,
+}
+
+#[derive(Debug, PartialEq, Clone)]
+pub struct TableArg {
+    pub table: TableSource,
+    pub joins: Vec<Join>,
 }
 
 #[derive(Debug, PartialEq, Clone)]
