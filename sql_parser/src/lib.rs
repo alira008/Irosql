@@ -174,8 +174,9 @@ impl<'a> Parser<'a> {
                 ast::SelectItem::Unnamed(expression)
                 | ast::SelectItem::WithAlias { expression, .. } => match expression {
                     ast::Expression::Literal(token) => {
-                        matches!(token.kind(), Kind::Number | Kind::Ident)
+                        matches!(token.kind(), Kind::Number)
                     }
+                    ast::Expression::Subquery(_) => true,
                     _ => false,
                 },
                 _ => false,
@@ -311,51 +312,6 @@ impl<'a> Parser<'a> {
         Some(ast::Statement::Select(Box::new(statement)))
     }
 
-    fn parse_select_item(
-        &mut self,
-        prev_expr: Option<&ast::Expression>,
-        cur_expr: Option<&ast::Expression>,
-        as_token: bool,
-    ) -> Option<ast::SelectItem> {
-        // check if the previous expression is a wildcard
-        if let Some(prev_expr) = prev_expr {
-            // if previous exists but current doesn't,
-            // then treat as if it is a column without an alias
-            if let Some(cur_expr) = cur_expr {
-                let literal = match cur_expr {
-                    ast::Expression::Literal(token) => token.literal().to_string(),
-                    _ => {
-                        self.current_msg_error("expected ALIAS to be a STRING");
-                        return None;
-                    }
-                };
-                if matches!(prev_expr, ast::Expression::Literal(ref token) if token.kind() == Kind::Asterisk)
-                {
-                    return Some(ast::SelectItem::WildcardWithAlias {
-                        expression: prev_expr.clone(),
-                        as_token,
-                        alias: literal,
-                    });
-                } else {
-                    return Some(ast::SelectItem::WithAlias {
-                        expression: prev_expr.clone(),
-                        as_token,
-                        alias: literal,
-                    });
-                }
-            } else {
-                if matches!(prev_expr, ast::Expression::Literal(ref token) if token.kind() == Kind::Asterisk)
-                {
-                    return Some(ast::SelectItem::Wildcard);
-                }
-
-                return Some(ast::SelectItem::Unnamed(prev_expr.clone()));
-            }
-        } else {
-            return None;
-        }
-    }
-
     fn parse_select_items(&mut self) -> Option<Vec<ast::SelectItem>> {
         // check if the next token is an identifier
         // return an error if the next token is not an identifier or number
@@ -369,91 +325,109 @@ impl<'a> Parser<'a> {
         }
 
         // get the columns to select
-        // check if the last token we saw was a comma
         let mut columns: Vec<ast::SelectItem> = vec![];
-        let mut previous_expr: Option<ast::Expression> = None;
-        let mut comma_seen = false;
         while !self.peek_token_is(Kind::Keyword(Keyword::FROM))
             && !self.peek_token_is(Kind::Keyword(Keyword::INTO))
             && !self.peek_token_is(Kind::Eof)
         {
             self.next_token();
-            match self.current_token.kind() {
-                Kind::Comma => {
-                    comma_seen = true;
 
-                    if let Some(select_item) =
-                        self.parse_select_item(previous_expr.as_ref(), None, false)
-                    {
-                        previous_expr.take();
-                        columns.push(select_item);
+            if columns.len() > 0 {
+                // expect a COMMA before the next GROUP BY expression
+                if !self.expect_current(Kind::Comma) {
+                    self.current_msg_error("expected COMMA before next ORDER BY expression");
+                    return None;
+                }
+
+                // consume the COMMA
+                self.next_token();
+            }
+
+            // parse the expression
+            if let Some(mut expression) = self.parse_expression(PRECEDENCE_LOWEST) {
+                // check if it is a compounded identifier
+                if matches!(expression, ast::Expression::Literal(ref token) if token.kind() == Kind::Ident)
+                {
+                    // check if the next token is a dot
+                    if self.peek_token_is(Kind::Period) {
+                        let mut idents = vec![self.current_token.clone()];
+                        while self.peek_token_is(Kind::Period) {
+                            // skip to the dot
+                            self.next_token();
+
+                            if !self.expect_peek(Kind::Ident) {
+                                return None;
+                            }
+
+                            idents.push(self.current_token.clone());
+                        }
+                        expression = ast::Expression::CompoundLiteral(idents);
                     }
                 }
-                Kind::Keyword(Keyword::AS) => {
+
+                // check if the next token is the keyword AS
+                let mut is_as = false;
+                if self.peek_token_is(Kind::Keyword(Keyword::AS)) {
+                    // skip the AS keyword
+                    self.next_token();
+                    is_as = true;
+
                     if !self.peek_token_is(Kind::Ident) {
                         self.peek_msg_error(
-                            "expected token to either be a quoted string or identifier",
+                            "expected token to either be a quoted string or identifier after AS keyword",
                         );
                         return None;
                     }
+                }
+
+                // if next token is a comma then this is a column without an alias
+                if self.peek_token_is(Kind::Ident) {
                     self.next_token();
 
-                    if let Some(expression) = self.parse_expression(PRECEDENCE_LOWEST) {
-                        // assume this is an alias
-                        // and previous expression is an identifier
-                        if let Some(select_item) =
-                            self.parse_select_item(previous_expr.as_ref(), Some(&expression), true)
-                        {
-                            previous_expr.take();
-                            columns.push(select_item);
-                        } else {
-                            previous_expr = Some(expression.clone());
-                        }
-                        comma_seen = false;
+                    // check if expression was a wildcard
+                    // add to the columns
+                    if matches!(expression, ast::Expression::Literal(ref token) if token.kind() == Kind::Asterisk)
+                    {
+                        columns.push(ast::SelectItem::WildcardWithAlias {
+                            expression,
+                            as_token: is_as,
+                            alias: self.current_token.to_string(),
+                        });
                     } else {
-                        self.peek_msg_error(
-                            "expected token to either be a quoted string or identifier",
-                        );
-                        return None;
+                        columns.push(ast::SelectItem::WithAlias {
+                            expression,
+                            as_token: is_as,
+                            alias: self.current_token.to_string(),
+                        });
+                    }
+                } else {
+                    // add to the columns
+                    // check if expression was a wildcard
+                    if matches!(expression, ast::Expression::Literal(ref token) if token.kind() == Kind::Asterisk)
+                    {
+                        columns.push(ast::SelectItem::Wildcard);
+                    } else {
+                        columns.push(ast::SelectItem::Unnamed(expression));
                     }
                 }
-                _ => {
-                    if let Some(expression) = self.parse_expression(PRECEDENCE_LOWEST) {
-                        // assume this is an alias
-                        // and previous expression is an identifier
-                        if let Some(select_item) =
-                            self.parse_select_item(previous_expr.as_ref(), Some(&expression), false)
-                        {
-                            previous_expr.take();
-                            columns.push(select_item);
-                        } else {
-                            previous_expr = Some(expression.clone());
-                        }
-                        comma_seen = false;
-                    } else {
-                        self.current_error(Kind::Ident);
-                        return None;
-                    }
-                }
+            } else {
+                self.current_error(Kind::Ident);
+                return None;
             }
         }
 
-        if let Some(select_item) = self.parse_select_item(previous_expr.as_ref(), None, false) {
-            columns.push(select_item);
-        }
-
-        match (columns.len(), comma_seen) {
-            (0, _) => {
+        match columns.len() {
+            0 => {
                 self.peek_msg_error("expected SELECT items in SELECT expression");
                 None
             }
-            (_, true) => {
-                self.peek_msg_error("expected SELECT item after COMMA in SELECT expression");
-                None
-            }
-
             _ => Some(columns),
         }
+    }
+
+    fn parse_from_clause(&mut self) -> Option<ast::Expression> {
+
+        None
     }
 
     fn parse_grouping(&mut self) -> Option<ast::Expression> {
@@ -574,42 +548,37 @@ impl<'a> Parser<'a> {
 
         // get the columns to order by
         let mut args = vec![];
-        // needed to check if we have an expression after comma
-        let mut seen_arg = false;
         while !self.peek_token_is(Kind::Keyword(Keyword::HAVING))
             && !self.peek_token_is(Kind::SemiColon)
             && !self.peek_token_is(Kind::Eof)
         {
             self.next_token();
 
-            match self.current_token.kind() {
-                Kind::Comma => {
-                    seen_arg = false;
+            if args.len() > 0 {
+                // expect a COMMA before the next GROUP BY expression
+                if !self.expect_current(Kind::Comma) {
+                    self.current_msg_error("expected COMMA before next ORDER BY expression");
+                    return None;
                 }
-                _ => {
-                    if let Some(expression) = self.parse_expression(PRECEDENCE_LOWEST) {
-                        // we have seen an group_by_arg
-                        seen_arg = true;
-                        args.push(expression);
-                    } else {
-                        // TODO: error handling
-                        self.current_error(Kind::Ident);
-                        return None;
-                    }
-                }
+
+                // consume the COMMA
+                self.next_token();
+            }
+
+            if let Some(expression) = self.parse_expression(PRECEDENCE_LOWEST) {
+                args.push(expression);
+            } else {
+                // TODO: error handling
+                self.current_error(Kind::Ident);
+                return None;
             }
         }
 
-        match (args.len(), seen_arg) {
-            (0, _) => {
+        match args.len() {
+            0 => {
                 self.peek_msg_error("expected GROUP BY expression after GROUP BY");
                 None
             }
-            (_, false) => {
-                self.peek_msg_error("expected GROUP BY expression after COMMA");
-                None
-            }
-
             _ => Some(args),
         }
     }
@@ -623,54 +592,50 @@ impl<'a> Parser<'a> {
 
         // get the columns to order by
         let mut order_by_args = vec![];
-        // needed to check if we have an expression after comma
-        let mut seen_order_by_arg = false;
         while !self.peek_token_is(Kind::Keyword(Keyword::OFFSET))
             && !self.peek_token_is(Kind::SemiColon)
             && !self.peek_token_is(Kind::Eof)
         {
             self.next_token();
 
-            match self.current_token.kind() {
-                Kind::Comma => {
-                    seen_order_by_arg = false;
+            if order_by_args.len() > 0 {
+                // expect a COMMA before the next ORDER BY expression
+                if !self.expect_current(Kind::Comma) {
+                    self.current_msg_error("expected COMMA before next ORDER BY expression");
+                    return None;
                 }
-                _ => {
-                    if let Some(expression) = self.parse_expression(PRECEDENCE_LOWEST) {
-                        let mut is_asc = None;
-                        // check if we have an ASC or DESC keyword
-                        if self.peek_token_is(Kind::Keyword(Keyword::ASC)) {
-                            is_asc = Some(true);
-                            self.next_token();
-                        } else if self.peek_token_is(Kind::Keyword(Keyword::DESC)) {
-                            is_asc = Some(false);
-                            self.next_token();
-                        }
 
-                        // we have seen an order_by_arg
-                        seen_order_by_arg = true;
-                        order_by_args.push(ast::OrderByArg {
-                            column: expression,
-                            asc: is_asc,
-                        });
-                    } else {
-                        self.current_error(Kind::Ident);
-                        return None;
-                    }
+                // consume the COMMA
+                self.next_token();
+            }
+
+            if let Some(expression) = self.parse_expression(PRECEDENCE_LOWEST) {
+                let mut is_asc = None;
+                // check if we have an ASC or DESC keyword
+                if self.peek_token_is(Kind::Keyword(Keyword::ASC)) {
+                    is_asc = Some(true);
+                    self.next_token();
+                } else if self.peek_token_is(Kind::Keyword(Keyword::DESC)) {
+                    is_asc = Some(false);
+                    self.next_token();
                 }
+
+                // we have seen an order_by_arg
+                order_by_args.push(ast::OrderByArg {
+                    column: expression,
+                    asc: is_asc,
+                });
+            } else {
+                self.current_error(Kind::Ident);
+                return None;
             }
         }
 
-        match (order_by_args.len(), seen_order_by_arg) {
-            (0, _) => {
+        match order_by_args.len() {
+            0 => {
                 self.peek_msg_error("expected ORDERED BY expression after ORDERED BY");
                 None
             }
-            (_, false) => {
-                self.peek_msg_error("expected ORDERED BY expression after COMMA");
-                None
-            }
-
             _ => Some(order_by_args),
         }
     }
