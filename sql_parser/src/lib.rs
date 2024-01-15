@@ -190,30 +190,15 @@ impl<'a> Parser<'a> {
                 return None;
             }
 
-            // get the table name to select from
-            // check if the next token is an identifier
-            if !self.expect_peek(Kind::Ident) {
-                return None;
-            } else {
-                statement
-                    .table
-                    .push(ast::Expression::Literal(self.current_token.clone()));
-            }
+            statement.table = self.parse_table_arg();
+            dbg!(&statement.table);
         } else {
             // check if we have a FROM keyword
             if self.peek_token_is(Kind::Keyword(Keyword::FROM)) {
                 // go to the FROM keyword
                 self.next_token();
 
-                // get the table name to select from
-                // check if the next token is an identifier
-                if !self.expect_peek(Kind::Ident) {
-                    return None;
-                } else {
-                    statement
-                        .table
-                        .push(ast::Expression::Literal(self.current_token.clone()));
-                }
+                statement.table = self.parse_table_arg();
             }
         }
 
@@ -224,10 +209,12 @@ impl<'a> Parser<'a> {
             self.next_token();
 
             let expression = self.parse_expression(PRECEDENCE_LOWEST);
-            if expression
-                .as_ref()
-                .is_some_and(|ex| !matches!(*ex, ast::Expression::Binary { .. }))
-            {
+            if expression.as_ref().is_some_and(|ex| {
+                !matches!(
+                    *ex,
+                    ast::Expression::Binary { .. } | ast::Expression::Between { .. }
+                )
+            }) {
                 self.current_msg_error("expected expression after WHERE keyword");
             }
             if expression.is_none() {
@@ -312,6 +299,151 @@ impl<'a> Parser<'a> {
         Some(ast::Statement::Select(Box::new(statement)))
     }
 
+    fn parse_table_source(&mut self) -> Option<ast::TableSource> {
+        // check if the next token is an identifier
+        if !self.expect_peek(Kind::Ident) {
+            dbg!(self.current_token.clone());
+            return None;
+        }
+        let table_name = ast::Expression::Literal(self.current_token.clone());
+
+        // check if we have an alias
+        let is_an;
+        let mut alias = None;
+        if self.peek_token_is(Kind::Keyword(Keyword::AS)) {
+            // skip the AS keyword
+            self.next_token();
+            // check if the next token is an identifier
+            if !self.peek_token_is(Kind::Ident) {
+                return None;
+            }
+            is_an = true;
+        } else {
+            is_an = false;
+        }
+
+        if self.peek_token_is(Kind::Ident) {
+            self.next_token();
+            alias = Some(self.current_token.to_string());
+        }
+
+        Some(ast::TableSource::Table {
+            name: table_name,
+            is_an,
+            alias,
+        })
+    }
+
+    fn parse_table_arg(&mut self) -> Option<ast::TableArg> {
+        if let Some(table_source) = self.parse_table_source() {
+            // check if we have joins
+            let mut joins = vec![];
+            loop {
+                let join = if self.peek_token_is(Kind::Keyword(Keyword::INNER)) {
+                    // skip the INNER keyword
+                    self.next_token();
+
+                    // skip the JOIN keyword
+                    if !self.expect_peek(Kind::Keyword(Keyword::JOIN)) {
+                        return None;
+                    }
+
+                    // parse the table source
+                    if let Some(table_source) = self.parse_table_source() {
+                        // check if we have an ON keyword
+                        if !self.expect_peek(Kind::Keyword(Keyword::ON)) {
+                            return None;
+                        }
+
+                        // skip the ON keyword
+                        self.next_token();
+
+                        // parse the search condition
+                        if let Some(expression) = self.parse_expression(PRECEDENCE_LOWEST) {
+                            ast::Join {
+                                join_type: ast::JoinType::Inner,
+                                table: table_source,
+                                condition: Some(expression),
+                            }
+                        } else {
+                            self.current_msg_error("expected search condition after ON keyword");
+                            return None;
+                        }
+                    } else {
+                        self.current_msg_error("expected TABLE SOURCE after JOIN keyword");
+                        return None;
+                    }
+                } else if self.peek_token_is(Kind::Keyword(Keyword::LEFT))
+                    | self.peek_token_is(Kind::Keyword(Keyword::RIGHT))
+                    | self.peek_token_is(Kind::Keyword(Keyword::FULL))
+                {
+                    self.next_token();
+                    let join_type = match (self.current_token.kind(), self.peek_token.kind()) {
+                        (Kind::Keyword(Keyword::LEFT), Kind::Keyword(Keyword::OUTER)) => {
+                            self.next_token();
+                            ast::JoinType::LeftOuter
+                        }
+                        (Kind::Keyword(Keyword::LEFT), _) => ast::JoinType::Left,
+                        (Kind::Keyword(Keyword::RIGHT), Kind::Keyword(Keyword::OUTER)) => {
+                            self.next_token();
+                            ast::JoinType::RightOuter
+                        }
+                        (Kind::Keyword(Keyword::RIGHT), _) => ast::JoinType::Right,
+                        (Kind::Keyword(Keyword::FULL), Kind::Keyword(Keyword::OUTER)) => {
+                            self.next_token();
+                            ast::JoinType::FullOuter
+                        }
+                        (Kind::Keyword(Keyword::FULL), _) => ast::JoinType::Full,
+                        _ => unreachable!(),
+                    };
+
+                    // skip the JOIN keyword
+                    if !self.expect_peek(Kind::Keyword(Keyword::JOIN)) {
+                        return None;
+                    }
+
+                    // get the table source
+                    if let Some(table_source) = self.parse_table_source() {
+                        // check if we have an ON keyword
+                        if !self.expect_peek(Kind::Keyword(Keyword::ON)) {
+                            return None;
+                        }
+
+                        // skip the ON keyword
+                        self.next_token();
+
+                        // parse the search condition
+                        if let Some(expression) = self.parse_expression(PRECEDENCE_LOWEST) {
+                            ast::Join {
+                                join_type,
+                                table: table_source,
+                                condition: Some(expression),
+                            }
+                        } else {
+                            self.current_msg_error("expected search condition after ON keyword");
+                            return None;
+                        }
+                    } else {
+                        self.current_msg_error("expected TABLE SOURCE after JOIN keyword");
+                        return None;
+                    }
+                } else {
+                    break;
+                };
+
+                joins.push(join);
+            }
+
+            dbg!(&joins);
+            Some(ast::TableArg {
+                table: table_source,
+                joins,
+            })
+        } else {
+            None
+        }
+    }
+
     fn parse_select_items(&mut self) -> Option<Vec<ast::SelectItem>> {
         // check if the next token is an identifier
         // return an error if the next token is not an identifier or number
@@ -344,27 +476,8 @@ impl<'a> Parser<'a> {
             }
 
             // parse the expression
-            if let Some(mut expression) = self.parse_expression(PRECEDENCE_LOWEST) {
+            if let Some(expression) = self.parse_expression(PRECEDENCE_LOWEST) {
                 // check if it is a compounded identifier
-                if matches!(expression, ast::Expression::Literal(ref token) if token.kind() == Kind::Ident)
-                {
-                    // check if the next token is a dot
-                    if self.peek_token_is(Kind::Period) {
-                        let mut idents = vec![self.current_token.clone()];
-                        while self.peek_token_is(Kind::Period) {
-                            // skip to the dot
-                            self.next_token();
-
-                            if !self.expect_peek(Kind::Ident) {
-                                return None;
-                            }
-
-                            idents.push(self.current_token.clone());
-                        }
-                        expression = ast::Expression::CompoundLiteral(idents);
-                    }
-                }
-
                 // check if the next token is the keyword AS
                 let mut is_as = false;
                 if self.peek_token_is(Kind::Keyword(Keyword::AS)) {
@@ -423,11 +536,6 @@ impl<'a> Parser<'a> {
             }
             _ => Some(columns),
         }
-    }
-
-    fn parse_from_clause(&mut self) -> Option<ast::Expression> {
-
-        None
     }
 
     fn parse_grouping(&mut self) -> Option<ast::Expression> {
@@ -667,9 +775,25 @@ impl<'a> Parser<'a> {
     fn parse_prefix_expression(&mut self) -> Option<ast::Expression> {
         match self.current_token.kind() {
             Kind::Ident | Kind::Number | Kind::Asterisk => {
-                Some(ast::Expression::Literal(self.current_token.clone()))
+                // check if the next token is a dot
+                if self.peek_token_is(Kind::Period) {
+                    let mut idents = vec![self.current_token.clone()];
+                    while self.peek_token_is(Kind::Period) {
+                        // skip to the dot
+                        self.next_token();
+
+                        if !self.expect_peek(Kind::Ident) {
+                            return None;
+                        }
+
+                        idents.push(self.current_token.clone());
+                    }
+                    Some(ast::Expression::CompoundLiteral(idents))
+                } else {
+                    Some(ast::Expression::Literal(self.current_token.clone()))
+                }
             }
-            Kind::Plus | Kind::Minus | Kind::Keyword(Keyword::NOT) => {
+            Kind::Plus | Kind::Minus => {
                 let operator = self.current_token.clone();
                 let precedence = self.current_precedence();
 
@@ -685,6 +809,56 @@ impl<'a> Parser<'a> {
                     // TODO: error handling
                     None
                 }
+            }
+            Kind::Keyword(Keyword::BETWEEN) => {
+                // skip the between
+                self.next_token();
+
+                if let Some(expression) = self.parse_expression(PRECEDENCE_LOWEST) {
+                    return match expression {
+                        ast::Expression::Binary {
+                            left,
+                            operator,
+                            right,
+                        } if matches!(operator.kind(), Kind::Keyword(Keyword::AND)) => {
+                            Some(ast::Expression::Between {
+                                not: false,
+                                low: left,
+                                high: right,
+                            })
+                        }
+                        _ => {
+                            self.peek_msg_error("expected binary expression after BETWEEN");
+                            return None;
+                        }
+                    };
+                }
+                return None;
+            }
+            Kind::Keyword(Keyword::NOT) => {
+                if self.peek_token_is(Kind::Keyword(Keyword::BETWEEN)) {
+                    // skip the NOT
+                    self.next_token();
+
+                    if let Some(expression) = self.parse_expression(PRECEDENCE_LOWEST) {
+                        return match expression {
+                            ast::Expression::Between { high, low, .. } => {
+                                Some(ast::Expression::Between {
+                                    not: true,
+                                    low,
+                                    high,
+                                })
+                            }
+                            _ => {
+                                self.peek_msg_error("expected binary expression after NOT BETWEEN");
+                                return None;
+                            }
+                        };
+                    }
+
+                    return None;
+                }
+                return None;
             }
             Kind::LeftParen => {
                 if self.peek_token_is(Kind::Keyword(Keyword::SELECT)) {
@@ -835,7 +1009,8 @@ impl<'a> Parser<'a> {
 
     fn make_string_error(&mut self, msg: &str, token: Token) -> String {
         let mut pointer_literal_len = match token.literal() {
-            Literal::String(string) | Literal::QuotedString(string) => string.len(),
+            Literal::String(string) => string.len(),
+            Literal::QuotedString { value, .. } => value.len() + 2,
             Literal::Number(num) => num.to_string().len(),
         };
         if pointer_literal_len == 0 {
@@ -859,7 +1034,8 @@ impl<'a> Parser<'a> {
 
     fn make_error(&mut self, token_kind: Kind, token: Token) -> String {
         let mut pointer_literal_len = match token.literal() {
-            Literal::String(string) | Literal::QuotedString(string) => string.len(),
+            Literal::String(string) => string.len(),
+            Literal::QuotedString { value, .. } => value.len() + 2,
             Literal::Number(num) => num.to_string().len(),
         };
         if pointer_literal_len == 0 {
@@ -923,10 +1099,17 @@ mod tests {
                     Token::wrap(Kind::Ident, Literal::new_string("name")),
                 ))],
                 into_table: None,
-                table: vec![ast::Expression::Literal(Token::wrap(
-                    Kind::Ident,
-                    Literal::new_string("users"),
-                ))],
+                table: Some(ast::TableArg {
+                    table: ast::TableSource::Table {
+                        name: ast::Expression::Literal(Token::wrap(
+                            Kind::Ident,
+                            Literal::new_string("users"),
+                        )),
+                        is_an: false,
+                        alias: None,
+                    },
+                    joins: vec![],
+                }),
                 where_clause: Some(ast::Expression::Binary {
                     left: Box::new(ast::Expression::Literal(Token::wrap(
                         Kind::Ident,
@@ -1006,10 +1189,17 @@ mod tests {
                     ))),
                 ],
                 into_table: None,
-                table: vec![ast::Expression::Literal(Token::wrap(
-                    Kind::Ident,
-                    Literal::new_string("users"),
-                ))],
+                table: Some(ast::TableArg {
+                    table: ast::TableSource::Table {
+                        name: ast::Expression::Literal(Token::wrap(
+                            Kind::Ident,
+                            Literal::new_string("users"),
+                        )),
+                        is_an: false,
+                        alias: None,
+                    },
+                    joins: vec![],
+                }),
                 where_clause: Some(ast::Expression::Binary {
                     left: Box::new(ast::Expression::Literal(Token::wrap(
                         Kind::Ident,
@@ -1076,10 +1266,112 @@ mod tests {
                         Literal::new_string("testFileGroup"),
                     ))),
                 }),
-                table: vec![ast::Expression::Literal(Token::wrap(
-                    Kind::Ident,
-                    Literal::new_string("users"),
-                ))],
+                table: Some(ast::TableArg {
+                    table: ast::TableSource::Table {
+                        name: ast::Expression::Literal(Token::wrap(
+                            Kind::Ident,
+                            Literal::new_string("users"),
+                        )),
+                        is_an: false,
+                        alias: None,
+                    },
+                    joins: vec![],
+                }),
+                where_clause: None,
+                group_by: vec![],
+                having: None,
+                order_by: vec![],
+                offset: None,
+                fetch: None,
+            }))],
+        };
+
+        assert_eq!(expected_query, query);
+    }
+
+    #[test]
+    fn basic_select_statement_with_joins() {
+        let input = "SELECT *,  [firstName], lastname,  dob FROM users u inner join potatoes as pt on  u.potato = pt.name left join biodata on biodata.height = u.height;";
+        let lexer = lexer::Lexer::new(input);
+        let mut parser = Parser::new(lexer);
+        let query = parser.parse();
+
+        let expected_query = ast::Query {
+            statements: vec![ast::Statement::Select(Box::new(ast::SelectStatement {
+                distinct: false,
+                top: None,
+                columns: vec![
+                    ast::SelectItem::Wildcard,
+                    ast::SelectItem::Unnamed(ast::Expression::Literal(Token::wrap(
+                        Kind::Ident,
+                        Literal::new_quoted("firstName", '['),
+                    ))),
+                    ast::SelectItem::Unnamed(ast::Expression::Literal(Token::wrap(
+                        Kind::Ident,
+                        Literal::new_string("lastname"),
+                    ))),
+                    ast::SelectItem::Unnamed(ast::Expression::Literal(Token::wrap(
+                        Kind::Ident,
+                        Literal::new_string("dob"),
+                    ))),
+                ],
+                into_table: None,
+                table: Some(ast::TableArg {
+                    table: ast::TableSource::Table {
+                        name: ast::Expression::Literal(Token::wrap(
+                            Kind::Ident,
+                            Literal::new_string("users"),
+                        )),
+                        is_an: false,
+                        alias: Some("u".to_string()),
+                    },
+                    joins: vec![
+                        ast::Join {
+                            join_type: ast::JoinType::Inner,
+                            table: ast::TableSource::Table {
+                                name: ast::Expression::Literal(Token::wrap(
+                                    Kind::Ident,
+                                    Literal::new_string("potatoes"),
+                                )),
+                                is_an: true,
+                                alias: Some("pt".to_string()),
+                            },
+                            condition: Some(ast::Expression::Binary {
+                                left: Box::new(ast::Expression::CompoundLiteral(vec![
+                                    Token::wrap(Kind::Ident, Literal::new_string("u")),
+                                    Token::wrap(Kind::Ident, Literal::new_string("potato")),
+                                ])),
+                                operator: Token::wrap(Kind::Equal, Literal::new_string("=")),
+                                right: Box::new(ast::Expression::CompoundLiteral(vec![
+                                    Token::wrap(Kind::Ident, Literal::new_string("pt")),
+                                    Token::wrap(Kind::Ident, Literal::new_string("name")),
+                                ])),
+                            }),
+                        },
+                        ast::Join {
+                            join_type: ast::JoinType::Left,
+                            table: ast::TableSource::Table {
+                                name: ast::Expression::Literal(Token::wrap(
+                                    Kind::Ident,
+                                    Literal::new_string("biodata"),
+                                )),
+                                is_an: false,
+                                alias: None,
+                            },
+                            condition: Some(ast::Expression::Binary {
+                                left: Box::new(ast::Expression::CompoundLiteral(vec![
+                                    Token::wrap(Kind::Ident, Literal::new_string("biodata")),
+                                    Token::wrap(Kind::Ident, Literal::new_string("height")),
+                                ])),
+                                operator: Token::wrap(Kind::Equal, Literal::new_string("=")),
+                                right: Box::new(ast::Expression::CompoundLiteral(vec![
+                                    Token::wrap(Kind::Ident, Literal::new_string("u")),
+                                    Token::wrap(Kind::Ident, Literal::new_string("height")),
+                                ])),
+                            }),
+                        },
+                    ],
+                }),
                 where_clause: None,
                 group_by: vec![],
                 having: None,
@@ -1119,7 +1411,7 @@ mod tests {
                     ))),
                     ast::SelectItem::Unnamed(ast::Expression::Literal(Token::wrap(
                         Kind::Ident,
-                        Literal::new_string("[first]"),
+                        Literal::new_quoted("first", '['),
                     ))),
                     ast::SelectItem::Unnamed(ast::Expression::Literal(Token::wrap(
                         Kind::Ident,
@@ -1127,10 +1419,17 @@ mod tests {
                     ))),
                 ],
                 into_table: None,
-                table: vec![ast::Expression::Literal(Token::wrap(
-                    Kind::Ident,
-                    Literal::new_string("users"),
-                ))],
+                table: Some(ast::TableArg {
+                    table: ast::TableSource::Table {
+                        name: ast::Expression::Literal(Token::wrap(
+                            Kind::Ident,
+                            Literal::new_string("users"),
+                        )),
+                        is_an: false,
+                        alias: None,
+                    },
+                    joins: vec![],
+                }),
                 where_clause: None,
                 group_by: vec![],
                 having: None,
@@ -1165,10 +1464,17 @@ mod tests {
                             top: None,
                             columns: vec![ast::SelectItem::Wildcard],
                             into_table: None,
-                            table: vec![ast::Expression::Literal(Token::wrap(
-                                Kind::Ident,
-                                Literal::new_string("MarketData"),
-                            ))],
+                            table: Some(ast::TableArg {
+                                table: ast::TableSource::Table {
+                                    name: ast::Expression::Literal(Token::wrap(
+                                        Kind::Ident,
+                                        Literal::new_string("MarketData"),
+                                    )),
+                                    is_an: false,
+                                    alias: None,
+                                },
+                                joins: vec![],
+                            }),
                             where_clause: None,
                             group_by: vec![],
                             having: None,
@@ -1179,10 +1485,17 @@ mod tests {
                     ))),
                 ],
                 into_table: None,
-                table: vec![ast::Expression::Literal(Token::wrap(
-                    Kind::Ident,
-                    Literal::new_string("users"),
-                ))],
+                table: Some(ast::TableArg {
+                    table: ast::TableSource::Table {
+                        name: ast::Expression::Literal(Token::wrap(
+                            Kind::Ident,
+                            Literal::new_string("users"),
+                        )),
+                        is_an: false,
+                        alias: None,
+                    },
+                    joins: vec![],
+                }),
                 where_clause: Some(ast::Expression::Binary {
                     left: Box::new(ast::Expression::Binary {
                         left: Box::new(ast::Expression::Literal(Token::wrap(
@@ -1192,7 +1505,7 @@ mod tests {
                         operator: Token::wrap(Kind::Equal, Literal::new_string("=")),
                         right: Box::new(ast::Expression::Literal(Token::wrap(
                             Kind::Ident,
-                            Literal::new_string("'blah'"),
+                            Literal::new_quoted("blah", '\''),
                         ))),
                     }),
                     operator: Token::wrap(Kind::Keyword(Keyword::AND), Literal::new_string("AND")),
@@ -1204,7 +1517,7 @@ mod tests {
                         operator: Token::wrap(Kind::GreaterThan, Literal::new_string(">")),
                         right: Box::new(ast::Expression::Literal(Token::wrap(
                             Kind::Ident,
-                            Literal::new_string("'hello'"),
+                            Literal::new_quoted("hello", '\''),
                         ))),
                     }),
                 }),
@@ -1234,10 +1547,17 @@ mod tests {
                     Token::wrap(Kind::Ident, Literal::new_string("name")),
                 ))],
                 into_table: None,
-                table: vec![ast::Expression::Literal(Token::wrap(
-                    Kind::Ident,
-                    Literal::new_string("users"),
-                ))],
+                table: Some(ast::TableArg {
+                    table: ast::TableSource::Table {
+                        name: ast::Expression::Literal(Token::wrap(
+                            Kind::Ident,
+                            Literal::new_string("users"),
+                        )),
+                        is_an: false,
+                        alias: None,
+                    },
+                    joins: vec![],
+                }),
                 where_clause: Some(ast::Expression::Binary {
                     left: Box::new(ast::Expression::Binary {
                         left: Box::new(ast::Expression::Literal(Token::wrap(
@@ -1247,7 +1567,7 @@ mod tests {
                         operator: Token::wrap(Kind::Equal, Literal::new_string("=")),
                         right: Box::new(ast::Expression::Literal(Token::wrap(
                             Kind::Ident,
-                            Literal::new_string("'blah'"),
+                            Literal::new_quoted("blah", '\''),
                         ))),
                     }),
                     operator: Token::wrap(Kind::Keyword(Keyword::AND), Literal::new_string("AND")),
@@ -1259,7 +1579,7 @@ mod tests {
                         operator: Token::wrap(Kind::GreaterThan, Literal::new_string(">")),
                         right: Box::new(ast::Expression::Literal(Token::wrap(
                             Kind::Ident,
-                            Literal::new_string("'hello'"),
+                            Literal::new_quoted("hello", '\''),
                         ))),
                     }),
                 }),

@@ -64,6 +64,11 @@ pub enum Expression {
     },
     Grouping(Box<Expression>),
     Subquery(Box<Statement>),
+    Between {
+        not: bool,
+        low: Box<Expression>,
+        high: Box<Expression>,
+    },
 }
 
 impl fmt::Display for Expression {
@@ -79,6 +84,13 @@ impl fmt::Display for Expression {
             Expression::Unary { operator, right } => write!(f, "{} {}", operator, right),
             Expression::Grouping(expr) => write!(f, "({})", expr),
             Expression::Subquery(subquery) => write!(f, "({})", subquery),
+            Expression::Between { not, low, high } => write!(
+                f,
+                "{} BETWEEN {} AND {}",
+                if *not { "NOT" } else { "" },
+                low,
+                high
+            ),
         }
     }
 }
@@ -159,7 +171,7 @@ pub struct SelectStatement {
     pub top: Option<TopArg>,
     pub columns: Vec<SelectItem>,
     pub into_table: Option<IntoArg>,
-    pub table: Vec<Expression>,
+    pub table: Option<TableArg>,
     pub where_clause: Option<Expression>,
     pub group_by: Vec<Expression>,
     pub having: Option<Expression>,
@@ -200,11 +212,8 @@ impl fmt::Display for SelectStatement {
         }
 
         // FROM
-        if !self.table.is_empty() {
-            f.write_str(" FROM ")?;
-
-            // TABLE
-            display_list_comma_separated(&self.table, f)?;
+        if let Some(table) = &self.table {
+            write!(f, " FROM {}", table)?;
         }
 
         // WHERE
@@ -280,6 +289,7 @@ impl fmt::Display for IntoArg {
 pub enum TableSource {
     Table {
         name: Expression,
+        is_an: bool,
         alias: Option<String>,
     },
     Derived,
@@ -287,31 +297,106 @@ pub enum TableSource {
     Unpivot,
     TableValuedFunction {
         expression: Expression,
+        is_an: bool,
         alias: Option<String>,
     },
 }
 
+impl fmt::Display for TableSource {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match &self {
+            TableSource::Table { name, is_an, alias } => match alias {
+                Some(alias) => {
+                    if *is_an {
+                        write!(f, "{} AS {}", name, alias)
+                    } else {
+                        write!(f, "{} {}", name, alias)
+                    }
+                }
+                None => write!(f, "{}", name),
+            },
+            TableSource::Derived => write!(f, "DERIVED"),
+            TableSource::Pivot => write!(f, "PIVOT"),
+            TableSource::Unpivot => write!(f, "UNPIVOT"),
+            TableSource::TableValuedFunction {
+                expression,
+                is_an,
+                alias,
+            } => match alias {
+                Some(alias) => {
+                    if *is_an {
+                        write!(f, "{} AS {}", expression, alias)
+                    } else {
+                        write!(f, "{} {}", expression, alias)
+                    }
+                }
+                None => write!(f, "{}", expression),
+            },
+        }
+    }
+}
+
 #[derive(Debug, PartialEq, Clone)]
 pub enum JoinType {
-    Inner(Expression),
-    Left(Expression),
-    Right(Expression),
-    Full(Expression),
+    Inner,
+    Left,
+    LeftOuter,
+    Right,
+    RightOuter,
+    Full,
+    FullOuter,
     CrossApply,
     OuterApply,
+}
+
+impl fmt::Display for JoinType {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match &self {
+            JoinType::Inner => write!(f, "INNER JOIN"),
+            JoinType::Left => write!(f, "LEFT JOIN"),
+            JoinType::LeftOuter => write!(f, "LEFT JOIN OUTER"),
+            JoinType::Right => write!(f, "RIGHT JOIN"),
+            JoinType::RightOuter => write!(f, "RIGHT JOIN OUTER"),
+            JoinType::Full => write!(f, "FULL JOIN "),
+            JoinType::FullOuter => write!(f, "FULL JOIN OUTER"),
+            JoinType::CrossApply => write!(f, "CROSS APPLY"),
+            JoinType::OuterApply => write!(f, "OUTER APPLY"),
+        }
+    }
 }
 
 #[derive(Debug, PartialEq, Clone)]
 pub struct Join {
     pub join_type: JoinType,
-    pub table: TableArg,
+    pub table: TableSource,
     pub condition: Option<Expression>,
+}
+
+impl fmt::Display for Join {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{} {}", self.join_type, self.table)?;
+        if let Some(condition) = &self.condition {
+            write!(f, " ON {}", condition)?;
+        }
+        Ok(())
+    }
 }
 
 #[derive(Debug, PartialEq, Clone)]
 pub struct TableArg {
     pub table: TableSource,
     pub joins: Vec<Join>,
+}
+
+impl fmt::Display for TableArg {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}", self.table)?;
+
+        for join in &self.joins {
+            write!(f, " {}", join)?;
+        }
+        Ok(())
+    }
 }
 
 #[derive(Debug, PartialEq, Clone)]
