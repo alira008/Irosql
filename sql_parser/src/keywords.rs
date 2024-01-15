@@ -84,6 +84,7 @@ define_keywords!(
     FLOOR,
     FOREIGN,
     FROM,
+    FULL,
     FUNCTION,
     GROUP,
     HAVING,
