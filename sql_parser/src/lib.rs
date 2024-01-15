@@ -212,7 +212,9 @@ impl<'a> Parser<'a> {
             if expression.as_ref().is_some_and(|ex| {
                 !matches!(
                     *ex,
-                    ast::Expression::Binary { .. } | ast::Expression::Between { .. }
+                    ast::Expression::Binary { .. }
+                        | ast::Expression::Between { .. }
+                        | ast::Expression::Unary { .. }
                 )
             }) {
                 self.current_msg_error("expected expression after WHERE keyword");
@@ -857,8 +859,22 @@ impl<'a> Parser<'a> {
                     }
 
                     return None;
+                } else {
+                    let operator = self.current_token.clone();
+                    let precedence = self.current_precedence();
+                    self.next_token();
+                    if let Some(expression) = self.parse_expression(precedence) {
+                        Some(ast::Expression::Unary {
+                            operator,
+                            right: Box::new(expression),
+                        })
+                    } else {
+                        None
+                    }
                 }
-                return None;
+            }
+            Kind::Keyword(Keyword::IS) =>  {
+                None
             }
             Kind::LeftParen => {
                 if self.peek_token_is(Kind::Keyword(Keyword::SELECT)) {

@@ -64,6 +64,10 @@ pub enum Expression {
     },
     Grouping(Box<Expression>),
     Subquery(Box<Statement>),
+    IsTrue(Box<Expression>),
+    IsNotTrue(Box<Expression>),
+    IsNull(Box<Expression>),
+    IsNotNull(Box<Expression>),
     Between {
         not: bool,
         low: Box<Expression>,
@@ -84,6 +88,10 @@ impl fmt::Display for Expression {
             Expression::Unary { operator, right } => write!(f, "{} {}", operator, right),
             Expression::Grouping(expr) => write!(f, "({})", expr),
             Expression::Subquery(subquery) => write!(f, "({})", subquery),
+            Expression::IsTrue(expr) => write!(f, "IS {}", expr),
+            Expression::IsNotTrue(expr) => write!(f, "IS NOT {}", expr),
+            Expression::IsNull(expr) => write!(f, "{} IS NULL", expr),
+            Expression::IsNotNull(expr) => write!(f, "{} IS NOT NULL", expr),
             Expression::Between { not, low, high } => write!(
                 f,
                 "{} BETWEEN {} AND {}",
