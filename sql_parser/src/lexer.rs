@@ -159,7 +159,10 @@ impl<'a> Lexer<'a> {
                         // Read the identifier until the next non-alphabetic character
                         // We should be reading until the next ']'
                         if let Some(ident) = self.read_quoted_ident('[') {
-                            Token::new(Kind::Ident, Literal::String(ident), self.current_location)
+                            Token::new(Kind::Ident, Literal::QuotedString {
+                                value: ident,
+                                quote_style: '[',
+                            }, self.current_location)
                         } else {
                             Token::new(
                                 Kind::Illegal,
@@ -184,7 +187,14 @@ impl<'a> Lexer<'a> {
                     // Read the identifier until the next non-alphabetic character
                     // We should be reading until the next '\''
                     if let Some(ident) = self.read_quoted_ident('\'') {
-                        Token::new(Kind::Ident, Literal::QuotedString(ident), self.current_location)
+                        Token::new(
+                            Kind::Ident,
+                            Literal::QuotedString {
+                                value: ident,
+                                quote_style: '\'',
+                            },
+                            self.current_location,
+                        )
                     } else {
                         Token::new(
                             Kind::Illegal,

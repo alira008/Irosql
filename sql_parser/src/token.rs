@@ -38,15 +38,27 @@ impl Location {
 
 impl Token {
     pub fn new(kind: Kind, literal: Literal, location: Location) -> Self {
-        Token { kind, literal, location }
+        Token {
+            kind,
+            literal,
+            location,
+        }
     }
 
     pub fn wrap(kind: Kind, literal: Literal) -> Self {
-        Token { kind, literal, location: Location::zero() }
+        Token {
+            kind,
+            literal,
+            location: Location::zero(),
+        }
     }
 
     pub fn wrap_kind(kind: Kind) -> Self {
-        Token { kind, literal: Literal::new_string(""), location: Location::zero() }
+        Token {
+            kind,
+            literal: Literal::new_string(""),
+            location: Location::zero(),
+        }
     }
 
     pub fn kind(&self) -> Kind {
@@ -64,10 +76,9 @@ impl Token {
 
 impl fmt::Display for Token {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match &self.literal {
-            Literal::String(string) | Literal::QuotedString(string) => write!(f, "{string}"),
-            Literal::Number(number) => write!(f, "{number}"),
-        }
+        write!(f, "{}", self.literal())?;
+
+        Ok(())
     }
 }
 
@@ -75,22 +86,29 @@ impl fmt::Display for Token {
 pub enum Literal {
     String(String),
     Number(f64),
-    QuotedString(String)
+    QuotedString { value: String, quote_style: char },
 }
 
 impl fmt::Display for Literal {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match &self {
             Literal::String(string) => write!(f, "{}", string),
-            Literal::QuotedString(string) => write!(f, "'{}'", string),
+            Literal::QuotedString { value, quote_style } => match quote_style {
+                '\'' => write!(f, "'{}'", value),
+                '[' => write!(f, "[{}]", value),
+                _ => unreachable!(),
+            },
             Literal::Number(number) => write!(f, "{}", number),
         }
     }
 }
 
 impl Literal {
-    pub fn new_quoted(string: &str) -> Self {
-        Literal::QuotedString(string.to_string())
+    pub fn new_quoted(string: &str, ch: char) -> Self {
+        Literal::QuotedString {
+            value: string.to_string(),
+            quote_style: ch,
+        }
     }
     pub fn new_string(string: &str) -> Self {
         Literal::String(string.to_string())
