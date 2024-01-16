@@ -68,11 +68,33 @@ pub enum Expression {
     IsNotTrue(Box<Expression>),
     IsNull(Box<Expression>),
     IsNotNull(Box<Expression>),
+    InList {
+        expression: Box<Expression>,
+        list: Vec<Expression>,
+        not: bool
+    },
     Between {
         not: bool,
         low: Box<Expression>,
         high: Box<Expression>,
     },
+    Any {
+        left: Box<Expression>,
+        operator: Token,
+        right: Box<Expression>,
+    },
+    All {
+        left: Box<Expression>,
+        operator: Token,
+        right: Box<Expression>,
+    },
+    Some {
+        left: Box<Expression>,
+        operator: Token,
+        right: Box<Expression>,
+    },
+    Exists(Box<Expression>),
+    ExpressionList(Vec<Expression>),
 }
 
 impl fmt::Display for Expression {
@@ -92,6 +114,12 @@ impl fmt::Display for Expression {
             Expression::IsNotTrue(expr) => write!(f, "IS NOT {}", expr),
             Expression::IsNull(expr) => write!(f, "{} IS NULL", expr),
             Expression::IsNotNull(expr) => write!(f, "{} IS NOT NULL", expr),
+            Expression::InList { expression, list, not } => {
+                write!(f, "{}", expression)?;
+                f.write_str(if *not { " NOT IN " } else { " IN " })?;
+                display_list_comma_separated(list, f)?;
+                Ok(())
+            }
             Expression::Between { not, low, high } => write!(
                 f,
                 "{} BETWEEN {} AND {}",
@@ -99,6 +127,29 @@ impl fmt::Display for Expression {
                 low,
                 high
             ),
+            Expression::Any {
+                left,
+                operator,
+                right,
+            } => write!(f, "{} {} ANY {}", left, operator, right),
+            Expression::All {
+                left,
+                operator,
+                right,
+            } => write!(f, "{} {} ALL {}", left, operator, right),
+            Expression::Some {
+                left,
+                operator,
+                right,
+            } => write!(f, "{} {} SOME {}", left, operator, right),
+            Expression::Exists(expr) => write!(f, "EXISTS {}", expr),
+            Expression::ExpressionList(list) => {
+                f.write_str("(")?;
+                display_list_comma_separated(list, f)?;
+                f.write_str(")")?;
+
+                Ok(())
+            }
         }
     }
 }

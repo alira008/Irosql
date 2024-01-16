@@ -215,6 +215,9 @@ impl<'a> Parser<'a> {
                     ast::Expression::Binary { .. }
                         | ast::Expression::Between { .. }
                         | ast::Expression::Unary { .. }
+                        | ast::Expression::Any { .. }
+                        | ast::Expression::All { .. }
+                        | ast::Expression::Some { .. }
                 )
             }) {
                 self.current_msg_error("expected expression after WHERE keyword");
@@ -774,6 +777,56 @@ impl<'a> Parser<'a> {
         left_expression
     }
 
+    fn parse_expression_list(&mut self) -> Option<Vec<ast::Expression>> {
+        // make sure the list has the same type of expressions
+        // either all idents, or all numbers
+        let mut expression_type = Kind::Ident;
+        let mut set_first_expression_type = false;
+        let mut expressions = vec![];
+        while !self.peek_token_is(Kind::RightParen) {
+            if matches!(self.peek_token.literal(), Literal::QuotedString { quote_style, .. } if quote_style == &'\'')
+                || !self.peek_token_is(Kind::Number)
+                || !self.peek_token_is(Kind::Comma)
+            {
+                self.peek_msg_error("expected STRING LITERAL or NUMBER");
+                return None;
+            }
+            self.next_token();
+
+            if !set_first_expression_type {
+                expression_type = self.current_token.kind();
+                set_first_expression_type = true;
+            }
+
+            if expressions.len() > 0 {
+                // expect a COMMA before the next expression
+                if !self.expect_current(Kind::Comma) {
+                    self.current_msg_error("expected COMMA before next expression");
+                    return None;
+                }
+
+                // consume the COMMA
+                if matches!(self.peek_token.literal(), Literal::QuotedString { quote_style, .. } if quote_style != &'\'')
+                    || !self.peek_token_is(Kind::Number)
+                    || !self.peek_token_is(Kind::Comma)
+                {
+                    self.peek_msg_error("expected STRING LITERAL or NUMBER");
+                    return None;
+                }
+                self.next_token();
+            }
+
+            if expression_type != self.current_token.kind() {
+                self.peek_msg_error("expected all expressions to be the same type");
+                return None;
+            }
+
+            expressions.push(ast::Expression::Literal(self.current_token.clone()));
+        }
+
+        Some(expressions)
+    }
+
     fn parse_prefix_expression(&mut self) -> Option<ast::Expression> {
         match self.current_token.kind() {
             Kind::Ident | Kind::Number | Kind::Asterisk => {
@@ -909,7 +962,18 @@ impl<'a> Parser<'a> {
                     }
                 }
             }
+            Kind::Keyword(Keyword::EXISTS) => {
+                self.next_token();
+
+                if let Some(expression) = self.parse_expression(PRECEDENCE_LOWEST) {
+                    Some(ast::Expression::Exists(Box::new(expression)))
+                } else {
+                    self.current_msg_error("expected expression after EXISTS");
+                    None
+                }
+            }
             Kind::LeftParen => {
+                // if the first token is select we need to parse a subquery
                 if self.peek_token_is(Kind::Keyword(Keyword::SELECT)) {
                     // go to select keyword
                     self.next_token();
@@ -926,6 +990,15 @@ impl<'a> Parser<'a> {
                     } else {
                         return None;
                     }
+                }
+                // if the first token is an literal/identifier, we need to parse an
+                // expression list
+                else if self.peek_token_is(Kind::Ident) && self.peek_token_is(Kind::Number) {
+                    if let Some(expression_list) = self.parse_expression_list() {
+                        return Some(ast::Expression::ExpressionList(expression_list));
+                    } else {
+                        return None;
+                    }
                 } else {
                     self.parse_grouping()
                 }
@@ -934,26 +1007,42 @@ impl<'a> Parser<'a> {
         }
     }
 
+    fn parse_in_expression(&mut self, left: ast::Expression) -> Option<ast::Expression> {
+        let mut is_not = false;
+        if self.current_token_is(Kind::Keyword(Keyword::NOT)) {
+            is_not = true;
+            self.next_token();
+        }
+        // check if we have an IN keyword
+        if !self.expect_current(Kind::Keyword(Keyword::IN)) {
+            return None;
+        }
+        // parse the expression list
+        if !self.expect_peek(Kind::LeftParen) {
+            return None;
+        }
+        // skip the left parenthesis
+        if let Some(expression_list) = self.parse_expression_list() {
+            Some(ast::Expression::InList {
+                expression: Box::new(left),
+                list: expression_list,
+                not: is_not
+            })
+        } else {
+            None
+        }
+    }
+
     fn parse_infix_expression(&mut self, left: ast::Expression) -> Option<ast::Expression> {
+        // | Kind::Keyword(Keyword::IN)
+        // | Kind::Keyword(Keyword::LIKE)
         match self.current_token.kind() {
             Kind::Plus
             | Kind::Minus
             | Kind::Asterisk
             | Kind::Divide
-            | Kind::Equal
-            | Kind::NotEqual
-            | Kind::LessThan
-            | Kind::LessThanEqual
-            | Kind::GreaterThan
-            | Kind::GreaterThanEqual
-            | Kind::Keyword(Keyword::ALL)
             | Kind::Keyword(Keyword::AND)
-            | Kind::Keyword(Keyword::ANY)
-            | Kind::Keyword(Keyword::BETWEEN)
-            | Kind::Keyword(Keyword::IN)
-            | Kind::Keyword(Keyword::LIKE)
-            | Kind::Keyword(Keyword::OR)
-            | Kind::Keyword(Keyword::SOME) => {
+            | Kind::Keyword(Keyword::OR) => {
                 let operator = self.current_token.clone();
                 let precedence = self.current_precedence();
                 self.next_token();
@@ -969,6 +1058,85 @@ impl<'a> Parser<'a> {
                     // TODO: error handling
                     None
                 }
+            }
+            Kind::Equal
+            | Kind::NotEqual
+            | Kind::LessThan
+            | Kind::LessThanEqual
+            | Kind::GreaterThan
+            | Kind::GreaterThanEqual => {
+                if self.peek_token.kind() == Kind::Keyword(Keyword::ANY) {
+                    let operator = self.current_token.clone();
+                    let precedence = self.current_precedence();
+                    // go to the ANY keyword
+                    self.next_token();
+                    // go to the next token
+                    self.next_token();
+                    if let Some(right_expression) = self.parse_expression(precedence) {
+                        Some(ast::Expression::Any {
+                            left: Box::new(left),
+                            operator,
+                            right: Box::new(right_expression),
+                        })
+                    } else {
+                        None
+                    }
+                } else if self.peek_token.kind() == Kind::Keyword(Keyword::ALL) {
+                    let operator = self.current_token.clone();
+                    let precedence = self.current_precedence();
+                    // go to the ALL keyword
+                    self.next_token();
+                    // go to the next token
+                    self.next_token();
+                    if let Some(right_expression) = self.parse_expression(precedence) {
+                        Some(ast::Expression::All {
+                            left: Box::new(left),
+                            operator,
+                            right: Box::new(right_expression),
+                        })
+                    } else {
+                        None
+                    }
+                } else if self.peek_token.kind() == Kind::Keyword(Keyword::SOME) {
+                    let operator = self.current_token.clone();
+                    let precedence = self.current_precedence();
+                    // go to the SOME keyword
+                    self.next_token();
+                    // go to the next token
+                    self.next_token();
+                    if let Some(right_expression) = self.parse_expression(precedence) {
+                        Some(ast::Expression::Some {
+                            left: Box::new(left),
+                            operator,
+                            right: Box::new(right_expression),
+                        })
+                    } else {
+                        None
+                    }
+                } else {
+                    let operator = self.current_token.clone();
+                    let precedence = self.current_precedence();
+                    self.next_token();
+
+                    // parse the expression to the right of the operator
+                    if let Some(right_expression) = self.parse_expression(precedence) {
+                        Some(ast::Expression::Binary {
+                            left: Box::new(left),
+                            operator,
+                            right: Box::new(right_expression),
+                        })
+                    } else {
+                        // TODO: error handling
+                        None
+                    }
+                }
+            }
+
+            Kind::Keyword(Keyword::IN) => {
+                self.parse_in_expression(left)
+            }
+            Kind::Keyword(Keyword::NOT) if self.peek_token_is(Kind::Keyword(Keyword::IN)) => {
+                self.parse_in_expression(left)
             }
             _ => None,
         }
