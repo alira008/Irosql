@@ -873,8 +873,41 @@ impl<'a> Parser<'a> {
                     }
                 }
             }
-            Kind::Keyword(Keyword::IS) =>  {
-                None
+            Kind::Keyword(Keyword::IS) => {
+                if self.peek_token_is(Kind::Keyword(Keyword::NOT)) {
+                    self.next_token();
+                    // check if we are looking at is not null
+                    if self.peek_token_is(Kind::Keyword(Keyword::NULL)) {
+                        self.next_token();
+                        if let Some(expression) = self.parse_expression(PRECEDENCE_LOWEST) {
+                            Some(ast::Expression::IsNotNull(Box::new(expression)))
+                        } else {
+                            self.current_msg_error("expected expression after IS NOT NULL");
+                            None
+                        }
+                    } else {
+                        if let Some(expression) = self.parse_expression(PRECEDENCE_LOWEST) {
+                            Some(ast::Expression::IsNotTrue(Box::new(expression)))
+                        } else {
+                            self.current_msg_error("expected expression after IS NOT");
+                            None
+                        }
+                    }
+                } else if self.peek_token_is(Kind::Keyword(Keyword::NULL)) {
+                    if let Some(expression) = self.parse_expression(PRECEDENCE_LOWEST) {
+                        Some(ast::Expression::IsNull(Box::new(expression)))
+                    } else {
+                        self.current_msg_error("expected expression after IS");
+                        None
+                    }
+                } else {
+                    if let Some(expression) = self.parse_expression(PRECEDENCE_LOWEST) {
+                        Some(ast::Expression::IsTrue(Box::new(expression)))
+                    } else {
+                        self.current_msg_error("expected expression after IS");
+                        None
+                    }
+                }
             }
             Kind::LeftParen => {
                 if self.peek_token_is(Kind::Keyword(Keyword::SELECT)) {
