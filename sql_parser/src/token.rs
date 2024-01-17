@@ -183,16 +183,8 @@ impl fmt::Display for Kind {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub enum WhiteSpace {
-    Space,
-    Tab,
-    NewLine,
-    CarriageReturn,
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub struct Identifier {
-    value: String,
-    quote_style: Option<char>,
-}
+// #[derive(Debug, Clone, PartialEq)]
+// pub struct Identifier {
+//     value: String,
+//     quote_style: Option<char>,
+// }
