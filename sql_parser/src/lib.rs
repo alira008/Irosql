@@ -191,7 +191,6 @@ impl<'a> Parser<'a> {
             }
 
             statement.table = self.parse_table_arg();
-            dbg!(&statement.table);
         } else {
             // check if we have a FROM keyword
             if self.peek_token_is(Kind::Keyword(Keyword::FROM)) {
@@ -218,6 +217,7 @@ impl<'a> Parser<'a> {
                         | ast::Expression::Any { .. }
                         | ast::Expression::All { .. }
                         | ast::Expression::Some { .. }
+                        | ast::Expression::InList { .. }
                 )
             }) {
                 self.current_msg_error("expected expression after WHERE keyword");
@@ -307,7 +307,6 @@ impl<'a> Parser<'a> {
     fn parse_table_source(&mut self) -> Option<ast::TableSource> {
         // check if the next token is an identifier
         if !self.expect_peek(Kind::Ident) {
-            dbg!(self.current_token.clone());
             return None;
         }
         let table_name = ast::Expression::Literal(self.current_token.clone());
@@ -439,7 +438,6 @@ impl<'a> Parser<'a> {
                 joins.push(join);
             }
 
-            dbg!(&joins);
             Some(ast::TableArg {
                 table: table_source,
                 joins,
@@ -784,9 +782,9 @@ impl<'a> Parser<'a> {
         let mut set_first_expression_type = false;
         let mut expressions = vec![];
         while !self.peek_token_is(Kind::RightParen) {
-            if matches!(self.peek_token.literal(), Literal::QuotedString { quote_style, .. } if quote_style == &'\'')
-                || !self.peek_token_is(Kind::Number)
-                || !self.peek_token_is(Kind::Comma)
+            if !matches!(self.peek_token.literal(), Literal::QuotedString { quote_style, .. } if quote_style == &'\'')
+                && !self.peek_token_is(Kind::Number)
+                && !self.peek_token_is(Kind::Comma)
             {
                 self.peek_msg_error("expected STRING LITERAL or NUMBER");
                 return None;
@@ -806,9 +804,9 @@ impl<'a> Parser<'a> {
                 }
 
                 // consume the COMMA
-                if matches!(self.peek_token.literal(), Literal::QuotedString { quote_style, .. } if quote_style != &'\'')
-                    || !self.peek_token_is(Kind::Number)
-                    || !self.peek_token_is(Kind::Comma)
+                if !matches!(self.peek_token.literal(), Literal::QuotedString { quote_style, .. } if quote_style == &'\'')
+                    && !self.peek_token_is(Kind::Number)
+                    && !self.peek_token_is(Kind::Comma)
                 {
                     self.peek_msg_error("expected STRING LITERAL or NUMBER");
                     return None;
@@ -817,7 +815,7 @@ impl<'a> Parser<'a> {
             }
 
             if expression_type != self.current_token.kind() {
-                self.peek_msg_error("expected all expressions to be the same type");
+                self.current_msg_error("expected all expressions to be the same type");
                 return None;
             }
 
@@ -825,6 +823,32 @@ impl<'a> Parser<'a> {
         }
 
         Some(expressions)
+    }
+
+    fn parse_in_expression(&mut self, left: ast::Expression) -> Option<ast::Expression> {
+        let mut is_not = false;
+        if self.current_token_is(Kind::Keyword(Keyword::NOT)) {
+            is_not = true;
+            self.next_token();
+        }
+        // check if we have an IN keyword
+        if !self.expect_current(Kind::Keyword(Keyword::IN)) {
+            return None;
+        }
+        // parse the expression list
+        if !self.expect_peek(Kind::LeftParen) {
+            return None;
+        }
+        // skip the left parenthesis
+        if let Some(expression_list) = self.parse_expression_list() {
+            Some(ast::Expression::InList {
+                expression: Box::new(left),
+                list: expression_list,
+                not: is_not,
+            })
+        } else {
+            None
+        }
     }
 
     fn parse_prefix_expression(&mut self) -> Option<ast::Expression> {
@@ -1007,32 +1031,6 @@ impl<'a> Parser<'a> {
         }
     }
 
-    fn parse_in_expression(&mut self, left: ast::Expression) -> Option<ast::Expression> {
-        let mut is_not = false;
-        if self.current_token_is(Kind::Keyword(Keyword::NOT)) {
-            is_not = true;
-            self.next_token();
-        }
-        // check if we have an IN keyword
-        if !self.expect_current(Kind::Keyword(Keyword::IN)) {
-            return None;
-        }
-        // parse the expression list
-        if !self.expect_peek(Kind::LeftParen) {
-            return None;
-        }
-        // skip the left parenthesis
-        if let Some(expression_list) = self.parse_expression_list() {
-            Some(ast::Expression::InList {
-                expression: Box::new(left),
-                list: expression_list,
-                not: is_not
-            })
-        } else {
-            None
-        }
-    }
-
     fn parse_infix_expression(&mut self, left: ast::Expression) -> Option<ast::Expression> {
         // | Kind::Keyword(Keyword::IN)
         // | Kind::Keyword(Keyword::LIKE)
@@ -1132,9 +1130,7 @@ impl<'a> Parser<'a> {
                 }
             }
 
-            Kind::Keyword(Keyword::IN) => {
-                self.parse_in_expression(left)
-            }
+            Kind::Keyword(Keyword::IN) => self.parse_in_expression(left),
             Kind::Keyword(Keyword::NOT) if self.peek_token_is(Kind::Keyword(Keyword::IN)) => {
                 self.parse_in_expression(left)
             }

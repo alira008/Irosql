@@ -117,7 +117,9 @@ impl fmt::Display for Expression {
             Expression::InList { expression, list, not } => {
                 write!(f, "{}", expression)?;
                 f.write_str(if *not { " NOT IN " } else { " IN " })?;
+            f.write_str("( ")?;
                 display_list_comma_separated(list, f)?;
+            f.write_str(" )")?;
                 Ok(())
             }
             Expression::Between { not, low, high } => write!(
