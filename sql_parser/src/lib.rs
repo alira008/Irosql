@@ -3,7 +3,84 @@ mod keywords;
 pub mod lexer;
 pub mod token;
 use keywords::Keyword;
+use thiserror::Error;
 use token::{Kind, Literal, Token};
+
+pub enum ParserErrorType {
+    WhereClauseError,
+    TopClauseError,
+    HavingClauseError,
+    JoinOnClauseError,
+    JoinTableClauseError,
+    MissingCommaError,
+    AliasInvalidTokenError,
+    EmptySelectItemsError,
+    OffsetClauseError,
+    FetchClauseError,
+    GroupByClauseError,
+    OrderByClauseError,
+    ListLiteralTypeError,
+    ListLiteralMultipleTypesError,
+    BetweenClauseError,
+    NotBetweenClauseError,
+    IsNotNullClauseError,
+    IsNotClauseError,
+    IsNullClauseError,
+    IsClauseError,
+    ExistsClauseError,
+}
+
+#[derive(Error, Debug)]
+pub enum ParserError {
+    #[error("Error at {1}: expected expression after WHERE keyword but got {0} instead\n{2}")]
+    WhereClauseError(String, String, String),
+    #[error("Error at {1}: expected expression after TOP keyword but got {0} instead\n{2}")]
+    TopClauseError(String, String, String),
+    #[error("Error at {1}: expected expression after HAVING keyword but got {0} instead\n{2}")]
+    HavingClauseError(String, String, String),
+    #[error("Error at {1}: expected expression after ON keyword in join expression but got {0} instead\n{2}")]
+    JoinOnClauseError(String, String, String),
+    #[error("Error at {1}: expected table source after JOIN keyword but got {0} instead\n{2}")]
+    JoinTableClauseError(String, String, String),
+    #[error("Error at {1}: expected comma before the next expression but got {0} instead\n{2}")]
+    MissingCommaError(String, String, String),
+    #[error(
+        "Error at {1}: expected QUOTED STRING LITERAL for column alias but got {0} instead\n{2}"
+    )]
+    AliasInvalidTokenError(String, String, String),
+    #[error("Error at {1}: expected items to select but got {0} instead\n{2}")]
+    EmptySelectItemsError(String, String, String),
+    #[error("Error at {1}: expected expression after OFFSET keyword but got {0} instead\n{2}")]
+    OffsetClauseError(String, String, String),
+    #[error("Error at {1}: expected expression after FETCH FIRST|NEXT keywords but got {0} instead\n{2}")]
+    FetchClauseError(String, String, String),
+    #[error("Error at {1}: expected expression after GROUP BY keywords but got {0} instead\n{2}")]
+    GroupByClauseError(String, String, String),
+    #[error("Error at {1}: expected expression after ORDER BY keywords but got {0} instead\n{2}")]
+    OrderByClauseError(String, String, String),
+    #[error("Error at {1}: expected QUOTED STRING LITERAL or NUMBER but got {0} instead\n{2}")]
+    ListLiteralTypeError(String, String, String),
+    #[error("Error at {0}: expected all expressions to be the same type\n{1}")]
+    ListLiteralMultipleTypesError(String, String),
+    #[error(
+        "Error at {1}: expected binary expression after BETWEEN keyword but got {0} instead\n{2}"
+    )]
+    BetweenClauseError(String, String, String),
+    #[error("Error at {1}: expected binary expression after NOT BETWEEN keywords but got {0} instead\n{2}")]
+    NotBetweenClauseError(String, String, String),
+    #[error(
+        "Error at {1}: expected expression after IS NOT NULL keywords but got {0} instead\n{2}"
+    )]
+    IsNotNullClauseError(String, String, String),
+    #[error("Error at {1}: expected expression after IS NOT keywords but got {0} instead\n{2}")]
+    IsNotClauseError(String, String, String),
+    #[error("Error at {1}: expected expression after IS NULL keywords but got {0} instead\n{2}")]
+    IsNullClauseError(String, String, String),
+    #[error("Error at {1}: expected expression after IS keyword but got {0} instead\n{2}")]
+    IsClauseError(String, String, String),
+    #[error("Error at {1}: expected expression after EXISTS keyword but got {0} instead\n{2}")]
+    ExistsClauseError(String, String, String),
+}
 
 #[derive(Debug, Clone)]
 pub struct Parser<'a> {
@@ -825,7 +902,7 @@ impl<'a> Parser<'a> {
         Some(expressions)
     }
 
-    fn parse_in_expression(&mut self, left: ast::Expression) -> Option<ast::Expression> {
+    fn parse_in_expression(&mut self, left: ast::Expression) -> Result<ast::Expression, ParserError> {
         let mut is_not = false;
         if self.current_token_is(Kind::Keyword(Keyword::NOT)) {
             is_not = true;
@@ -841,7 +918,7 @@ impl<'a> Parser<'a> {
         }
         // skip the left parenthesis
         if let Some(expression_list) = self.parse_expression_list() {
-            Some(ast::Expression::InList {
+            Ok(ast::Expression::InList {
                 expression: Box::new(left),
                 list: expression_list,
                 not: is_not,
@@ -974,7 +1051,7 @@ impl<'a> Parser<'a> {
                     if let Some(expression) = self.parse_expression(PRECEDENCE_LOWEST) {
                         Some(ast::Expression::IsNull(Box::new(expression)))
                     } else {
-                        self.current_msg_error("expected expression after IS");
+                        self.current_msg_error("expected expression after IS NULL");
                         None
                     }
                 } else {
@@ -1245,6 +1322,148 @@ impl<'a> Parser<'a> {
         )
     }
 
+    fn peek_err(&self, parser_error_type: ParserErrorType) -> ParserError {
+        self.make_err(&self.peek_token, parser_error_type)
+    }
+
+    fn current_err(&self, parser_error_type: ParserErrorType) -> ParserError {
+        self.make_err(&self.current_token, parser_error_type)
+    }
+
+    fn make_err(&self, token: &Token, parser_error_type: ParserErrorType) -> ParserError {
+        let mut pointer_literal_len = match token.literal() {
+            Literal::String(string) => string.len(),
+            Literal::QuotedString { value, .. } => value.len() + 2,
+            Literal::Number(num) => num.to_string().len(),
+        };
+        if pointer_literal_len == 0 {
+            pointer_literal_len = 1;
+        }
+        let pointer_line = format!(
+            "{}{}",
+            " ".repeat(token.location().column),
+            "^".repeat(pointer_literal_len)
+        );
+
+        match parser_error_type {
+            ParserErrorType::WhereClauseError => ParserError::WhereClauseError(
+                token.literal().to_string(),
+                self.lexer.current_line_input().to_string(),
+                pointer_line.to_string(),
+            ),
+            ParserErrorType::TopClauseError => ParserError::TopClauseError(
+                token.literal().to_string(),
+                self.lexer.current_line_input().to_string(),
+                pointer_line.to_string(),
+            ),
+            ParserErrorType::HavingClauseError => ParserError::HavingClauseError(
+                token.literal().to_string(),
+                self.lexer.current_line_input().to_string(),
+                pointer_line.to_string(),
+            ),
+            ParserErrorType::JoinOnClauseError => ParserError::JoinOnClauseError(
+                token.literal().to_string(),
+                self.lexer.current_line_input().to_string(),
+                pointer_line.to_string(),
+            ),
+            ParserErrorType::JoinTableClauseError => ParserError::JoinTableClauseError(
+                token.literal().to_string(),
+                self.lexer.current_line_input().to_string(),
+                pointer_line.to_string(),
+            ),
+            ParserErrorType::MissingCommaError => ParserError::MissingCommaError(
+                token.literal().to_string(),
+                self.lexer.current_line_input().to_string(),
+                pointer_line.to_string(),
+            ),
+            ParserErrorType::AliasInvalidTokenError => ParserError::AliasInvalidTokenError(
+                token.literal().to_string(),
+                self.lexer.current_line_input().to_string(),
+                pointer_line.to_string(),
+            ),
+            ParserErrorType::EmptySelectItemsError => ParserError::EmptySelectItemsError(
+                token.literal().to_string(),
+                self.lexer.current_line_input().to_string(),
+                pointer_line.to_string(),
+            ),
+            ParserErrorType::OffsetClauseError => ParserError::OffsetClauseError(
+                token.literal().to_string(),
+                self.lexer.current_line_input().to_string(),
+                pointer_line.to_string(),
+            ),
+            ParserErrorType::FetchClauseError => ParserError::FetchClauseError(
+                token.literal().to_string(),
+                self.lexer.current_line_input().to_string(),
+                pointer_line.to_string(),
+            ),
+            ParserErrorType::GroupByClauseError => ParserError::GroupByClauseError(
+                token.literal().to_string(),
+                self.lexer.current_line_input().to_string(),
+                pointer_line.to_string(),
+            ),
+            ParserErrorType::OrderByClauseError => ParserError::OrderByClauseError(
+                token.literal().to_string(),
+                self.lexer.current_line_input().to_string(),
+                pointer_line.to_string(),
+            ),
+            ParserErrorType::ListLiteralTypeError => ParserError::ListLiteralTypeError(
+                token.literal().to_string(),
+                self.lexer.current_line_input().to_string(),
+                pointer_line.to_string(),
+            ),
+            ParserErrorType::ListLiteralMultipleTypesError => {
+                ParserError::ListLiteralMultipleTypesError(
+                    self.lexer.current_line_input().to_string(),
+                    pointer_line.to_string(),
+                )
+            }
+            ParserErrorType::BetweenClauseError => ParserError::BetweenClauseError(
+                token.literal().to_string(),
+                self.lexer.current_line_input().to_string(),
+                pointer_line.to_string(),
+            ),
+            ParserErrorType::NotBetweenClauseError => ParserError::NotBetweenClauseError(
+                token.literal().to_string(),
+                self.lexer.current_line_input().to_string(),
+                pointer_line.to_string(),
+            ),
+            ParserErrorType::IsNotNullClauseError => ParserError::IsNotNullClauseError(
+                token.literal().to_string(),
+                self.lexer.current_line_input().to_string(),
+                pointer_line.to_string(),
+            ),
+            ParserErrorType::IsNotClauseError => ParserError::IsNotClauseError(
+                token.literal().to_string(),
+                self.lexer.current_line_input().to_string(),
+                pointer_line.to_string(),
+            ),
+            ParserErrorType::IsNullClauseError => ParserError::IsNullClauseError(
+                token.literal().to_string(),
+                self.lexer.current_line_input().to_string(),
+                pointer_line.to_string(),
+            ),
+            ParserErrorType::IsClauseError => ParserError::IsClauseError(
+                token.literal().to_string(),
+                self.lexer.current_line_input().to_string(),
+                pointer_line.to_string(),
+            ),
+            ParserErrorType::ExistsClauseError => ParserError::ExistsClauseError(
+                token.literal().to_string(),
+                self.lexer.current_line_input().to_string(),
+                pointer_line.to_string(),
+            ),
+        }
+
+        // format!(
+        //     "Error at {}: expected token to be {:?}, got {:?} instead\n{}\n{}",
+        //     token.location(),
+        //     token_kind,
+        //     token.literal(),
+        //     self.lexer.current_line_input(),
+        //     pointer_line
+        // )
+    }
+
     fn make_error(&mut self, token_kind: Kind, token: Token) -> String {
         let mut pointer_literal_len = match token.literal() {
             Literal::String(string) => string.len(),
@@ -1269,6 +1488,10 @@ impl<'a> Parser<'a> {
             pointer_line
         )
     }
+
+    // fn test_error(&self) -> ParserError {
+    // ParserError::IsClauseError(self.current_token.clone(), "".to_string(), "".to_string())
+    // }
 
     #[allow(dead_code)]
     fn peek_msg_error(&mut self, msg: &str) {

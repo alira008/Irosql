@@ -147,6 +147,42 @@ pub enum Kind {
     Eof,
 }
 
+impl fmt::Display for Kind {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        
+        match self {
+            Kind::Ident => f.write_str("IDENTIFIER"),
+            Kind::Keyword(k) => write!(f, "KEYWORD({:?})", k),
+            Kind::Number => f.write_str("NUMBER"),
+            Kind::Comma => f.write_str(","),
+            Kind::LeftParen => f.write_str("("),
+            Kind::RightParen => f.write_str(")"),
+            Kind::DoubleEqual => f.write_str("=="),
+            Kind::Equal => f.write_str("="),
+            Kind::NotEqual => f.write_str("!="),
+            Kind::LessThan => f.write_str("<"),
+            Kind::LessThanEqual => f.write_str("<="),
+            Kind::GreaterThan => f.write_str(">"),
+            Kind::GreaterThanEqual => f.write_str(">="),
+            Kind::Plus => f.write_str("+"),
+            Kind::Minus => f.write_str("-"),
+            Kind::Divide => f.write_str("/"),
+            Kind::Asterisk => f.write_str("*"),
+            Kind::Mod => f.write_str("%"),
+            Kind::Period => f.write_str("."),
+            Kind::SemiColon => f.write_str(";"),
+            Kind::LeftBracket => f.write_str("["),
+            Kind::RightBracket => f.write_str("]"),
+            Kind::LeftBrace => f.write_str("{"),
+            Kind::RightBrace => f.write_str("}"),
+            Kind::Tilde => f.write_str("~"),
+            Kind::ExclamationMark => f.write_str("!"),
+            Kind::Illegal => f.write_str("ILLEGAL"),
+            Kind::Eof => f.write_str("EOF"),
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum WhiteSpace {
     Space,
