@@ -215,7 +215,7 @@ impl<'a> Lexer<'a> {
                 ),
                 '~' => Token::new(Kind::Tilde, Literal::new_string("~"), self.current_location),
                 _ => {
-                    if ch.is_alphabetic() {
+                    if ch.is_alphabetic() || ch == '_' {
                         // Read the identifier until the next non-alphabetic character
                         let ident = self.read_ident();
                         // Check if the identifier is a keyword
