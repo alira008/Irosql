@@ -1047,6 +1047,51 @@ impl<'a> Parser<'a> {
         }
     }
 
+    fn is_valid_function_name(&self, token: &Token) -> bool {
+        match token.kind() {
+            Kind::Ident
+            | Kind::Keyword(Keyword::DENSE_RANK)
+            | Kind::Keyword(Keyword::RANK)
+            | Kind::Keyword(Keyword::ROW_NUMBER)
+            | Kind::Keyword(Keyword::ABS)
+            | Kind::Keyword(Keyword::ACOS)
+            | Kind::Keyword(Keyword::ASIN)
+            | Kind::Keyword(Keyword::ATAN)
+            | Kind::Keyword(Keyword::CEILING)
+            | Kind::Keyword(Keyword::COS)
+            | Kind::Keyword(Keyword::COT)
+            | Kind::Keyword(Keyword::DEGREES)
+            | Kind::Keyword(Keyword::EXP)
+            | Kind::Keyword(Keyword::FLOOR)
+            | Kind::Keyword(Keyword::LOG)
+            | Kind::Keyword(Keyword::LOG10)
+            | Kind::Keyword(Keyword::PI)
+            | Kind::Keyword(Keyword::POWER)
+            | Kind::Keyword(Keyword::RADIANS)
+            | Kind::Keyword(Keyword::RANDS)
+            | Kind::Keyword(Keyword::ROUND)
+            | Kind::Keyword(Keyword::SIGN)
+            | Kind::Keyword(Keyword::SIN)
+            | Kind::Keyword(Keyword::SQRT)
+            | Kind::Keyword(Keyword::SQUARE)
+            | Kind::Keyword(Keyword::TAN)
+            | Kind::Keyword(Keyword::FIRST_VALUE)
+            | Kind::Keyword(Keyword::LAST_VALUE)
+            | Kind::Keyword(Keyword::LAG)
+            | Kind::Keyword(Keyword::LEAD)
+            | Kind::Keyword(Keyword::AVG)
+            | Kind::Keyword(Keyword::COUNT)
+            | Kind::Keyword(Keyword::MAX)
+            | Kind::Keyword(Keyword::MIN)
+            | Kind::Keyword(Keyword::STDEV)
+            | Kind::Keyword(Keyword::STDEVP)
+            | Kind::Keyword(Keyword::SUM)
+            | Kind::Keyword(Keyword::VAR)
+            | Kind::Keyword(Keyword::VARP) => true,
+            _ => false,
+        }
+    }
+
     fn current_token_is(&self, token_kind: Kind) -> bool {
         self.current_token.kind() == token_kind
     }
