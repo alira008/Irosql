@@ -273,7 +273,7 @@ impl<'a> Lexer<'a> {
 
     fn read_ident(&mut self) -> String {
         let start = self.current_position;
-        while self.chars.peek().is_some_and(|ch| ch.is_alphanumeric()) {
+        while self.chars.peek().is_some_and(|ch| ch.is_alphanumeric() || ch == &'_') {
             self.read_char();
         }
         self.input[start..self.current_position + 1].to_string()

@@ -24,10 +24,9 @@ make sense of the queries that are given to it
     - [ ] from clause
         - [x] basic table
         - [x] table with alias
-        - [ ] table valued function
+        - [x] table valued function
         - [ ] pivot table
         - [ ] unpivot table
-        - [ ] function
         - [x] joins
     - [ ] where clause 
         - [x] with subqueries

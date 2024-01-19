@@ -267,10 +267,27 @@ impl<'a> Parser<'a> {
         self.expect_kind(Kind::Ident, &self.peek_token)?;
         self.next_token();
 
-        let table_name = ast::Expression::Literal(self.current_token.clone());
+        let table = self.parse_expression(PRECEDENCE_LOWEST)?;
+        // if !matches!(
+        //     table,
+        //     ast::Expression::Literal(_) | ast::Expression::CompoundLiteral(_)
+        // ) {
+        //     self.expected("expected table name", &self.current_token)?;
+        // }
+
+        // // if this true then we have a function call
+        // let mut function_params = None;
+        // if self.peek_token_is(Kind::LeftParen) {
+        //     self.next_token();
+        //     let params = self.parse_expression(PRECEDENCE_LOWEST)?;
+        //     if !matches!(params, ast::Expression::ExpressionList(_)) {
+        //         self.expected("expected function parameters", &self.current_token)?;
+        //     }
+        //     function_params = Some(params);
+        // }
 
         // check if we have an alias
-        let is_an;
+        let is_as;
         let mut alias = None;
         if self.peek_token_is(Kind::Keyword(Keyword::AS)) {
             // skip the AS keyword
@@ -278,9 +295,9 @@ impl<'a> Parser<'a> {
 
             // check if the next token is an identifier
             self.expect_kind(Kind::Ident, &self.peek_token)?;
-            is_an = true;
+            is_as = true;
         } else {
-            is_an = false;
+            is_as = false;
         }
 
         if self.peek_token_is(Kind::Ident) {
@@ -288,11 +305,25 @@ impl<'a> Parser<'a> {
             alias = Some(self.current_token.to_string());
         }
 
-        Ok(ast::TableSource::Table {
-            name: table_name,
-            is_an,
-            alias,
-        })
+        if matches!(
+            table,
+            ast::Expression::Literal(_) | ast::Expression::CompoundLiteral(_)
+        ) {
+            return Ok(ast::TableSource::Table {
+                name: table,
+                is_as,
+                alias,
+            });
+        } else if matches!(table, ast::Expression::Function { .. }) {
+            return Ok(ast::TableSource::TableValuedFunction {
+                function: table,
+                is_as,
+                alias,
+            });
+        } else {
+            self.expected("expected table name or function", &self.current_token)?;
+            unreachable!();
+        }
     }
 
     fn parse_table_arg(&mut self) -> Result<ast::TableArg, String> {
@@ -653,38 +684,29 @@ impl<'a> Parser<'a> {
     fn parse_expression_list(&mut self) -> Result<Vec<ast::Expression>, String> {
         // make sure the list has the same type of expressions
         // either all idents, or all numbers
-        let mut expression_type = Kind::Ident;
-        let mut set_first_expression_type = false;
         let mut expressions = vec![];
         while !self.peek_token_is(Kind::RightParen) {
-            if !matches!(self.peek_token.literal(), Literal::QuotedString { quote_style, .. } if quote_style == &'\'')
-                && !self.peek_token_is(Kind::Number)
+            if !self.peek_token_is(Kind::Number)
+                && !self.peek_token_is(Kind::Ident)
                 && !self.peek_token_is(Kind::Comma)
             {
-                self.expected("STRING LITERAL or NUMBER", &self.peek_token)?;
+                self.expected("STRING LITERAL or NUMBER or Identifier", &self.peek_token)?;
             }
             self.next_token();
-
-            if !set_first_expression_type {
-                expression_type = self.current_token.kind();
-                set_first_expression_type = true;
-            }
 
             if expressions.len() > 0 {
                 // expect a COMMA before the next expression
                 self.expect_kind(Kind::Comma, &self.current_token)?;
 
                 // consume the COMMA
-                if !matches!(self.peek_token.literal(), Literal::QuotedString { quote_style, .. } if quote_style == &'\'')
-                    && !self.peek_token_is(Kind::Number)
+                if !self.peek_token_is(Kind::Number)
+                    && !self.peek_token_is(Kind::Ident)
                     && !self.peek_token_is(Kind::Comma)
                 {
-                    self.expected("STRING LITERAL or NUMBER", &self.peek_token)?;
+                    self.expected("STRING LITERAL or NUMBER or Identifier", &self.peek_token)?;
                 }
                 self.next_token();
             }
-
-            self.expect_kind(expression_type, &self.current_token)?;
 
             expressions.push(ast::Expression::Literal(self.current_token.clone()));
         }
@@ -731,9 +753,42 @@ impl<'a> Parser<'a> {
 
                         idents.push(self.current_token.clone());
                     }
-                    return Ok(ast::Expression::CompoundLiteral(idents));
+                    if self.peek_token_is(Kind::LeftParen) {
+                        // skip the left parenthesis
+                        self.next_token();
+
+                        // parse the expression list
+                        let expression_list = self.parse_expression(PRECEDENCE_LOWEST)?;
+                        if !matches!(expression_list, ast::Expression::ExpressionList(_)) {
+                            self.expected("expected function parameters", &self.current_token)?;
+                        }
+
+                        return Ok(ast::Expression::Function {
+                            name: Box::new(ast::Expression::CompoundLiteral(idents)),
+                            args: Box::new(expression_list),
+                        });
+                    } else {
+                        return Ok(ast::Expression::CompoundLiteral(idents));
+                    }
                 } else {
-                    return Ok(ast::Expression::Literal(self.current_token.clone()));
+                    let ident = self.current_token.clone();
+                    if self.peek_token_is(Kind::LeftParen) {
+                        // skip the left parenthesis
+                        self.next_token();
+
+                        // parse the expression list
+                        let expression_list = self.parse_expression(PRECEDENCE_LOWEST)?;
+                        if !matches!(expression_list, ast::Expression::ExpressionList(_)) {
+                            self.expected("expected function parameters", &self.current_token)?;
+                        }
+
+                        return Ok(ast::Expression::Function {
+                            name: Box::new(ast::Expression::Literal(ident)),
+                            args: Box::new(expression_list),
+                        });
+                    } else {
+                        return Ok(ast::Expression::Literal(ident));
+                    }
                 }
             }
             Kind::Plus | Kind::Minus => {
@@ -854,6 +909,10 @@ impl<'a> Parser<'a> {
                 // expression list
                 else if self.peek_token_is(Kind::Ident) || self.peek_token_is(Kind::Number) {
                     let expression_list = self.parse_expression_list()?;
+                    // check if we have a closing parenthesis
+                    self.expect_kind(Kind::RightParen, &self.peek_token)?;
+                    self.next_token();
+
                     return Ok(ast::Expression::ExpressionList(expression_list));
                 } else {
                     return self.parse_grouping();
@@ -1074,7 +1133,7 @@ mod tests {
                             Kind::Ident,
                             Literal::new_string("users"),
                         )),
-                        is_an: false,
+                        is_as: false,
                         alias: None,
                     },
                     joins: vec![],
@@ -1164,7 +1223,7 @@ mod tests {
                             Kind::Ident,
                             Literal::new_string("users"),
                         )),
-                        is_an: false,
+                        is_as: false,
                         alias: None,
                     },
                     joins: vec![],
@@ -1241,7 +1300,7 @@ mod tests {
                             Kind::Ident,
                             Literal::new_string("users"),
                         )),
-                        is_an: false,
+                        is_as: false,
                         alias: None,
                     },
                     joins: vec![],
@@ -1291,7 +1350,7 @@ mod tests {
                             Kind::Ident,
                             Literal::new_string("users"),
                         )),
-                        is_an: false,
+                        is_as: false,
                         alias: Some("u".to_string()),
                     },
                     joins: vec![
@@ -1302,7 +1361,7 @@ mod tests {
                                     Kind::Ident,
                                     Literal::new_string("potatoes"),
                                 )),
-                                is_an: true,
+                                is_as: true,
                                 alias: Some("pt".to_string()),
                             },
                             condition: Some(ast::Expression::Binary {
@@ -1324,7 +1383,7 @@ mod tests {
                                     Kind::Ident,
                                     Literal::new_string("biodata"),
                                 )),
-                                is_an: false,
+                                is_as: false,
                                 alias: None,
                             },
                             condition: Some(ast::Expression::Binary {
@@ -1394,7 +1453,7 @@ mod tests {
                             Kind::Ident,
                             Literal::new_string("users"),
                         )),
-                        is_an: false,
+                        is_as: false,
                         alias: None,
                     },
                     joins: vec![],
@@ -1439,7 +1498,7 @@ mod tests {
                                         Kind::Ident,
                                         Literal::new_string("MarketData"),
                                     )),
-                                    is_an: false,
+                                    is_as: false,
                                     alias: None,
                                 },
                                 joins: vec![],
@@ -1460,7 +1519,7 @@ mod tests {
                             Kind::Ident,
                             Literal::new_string("users"),
                         )),
-                        is_an: false,
+                        is_as: false,
                         alias: None,
                     },
                     joins: vec![],
@@ -1522,7 +1581,7 @@ mod tests {
                             Kind::Ident,
                             Literal::new_string("users"),
                         )),
-                        is_an: false,
+                        is_as: false,
                         alias: None,
                     },
                     joins: vec![],

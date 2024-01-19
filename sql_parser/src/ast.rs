@@ -71,7 +71,7 @@ pub enum Expression {
     InList {
         expression: Box<Expression>,
         list: Vec<Expression>,
-        not: bool
+        not: bool,
     },
     Between {
         not: bool,
@@ -95,6 +95,10 @@ pub enum Expression {
     },
     Exists(Box<Expression>),
     ExpressionList(Vec<Expression>),
+    Function {
+        name: Box<Expression>,
+        args: Box<Expression>,
+    },
 }
 
 impl fmt::Display for Expression {
@@ -114,12 +118,16 @@ impl fmt::Display for Expression {
             Expression::IsNotTrue(expr) => write!(f, "IS NOT {}", expr),
             Expression::IsNull(expr) => write!(f, "{} IS NULL", expr),
             Expression::IsNotNull(expr) => write!(f, "{} IS NOT NULL", expr),
-            Expression::InList { expression, list, not } => {
+            Expression::InList {
+                expression,
+                list,
+                not,
+            } => {
                 write!(f, "{}", expression)?;
                 f.write_str(if *not { " NOT IN " } else { " IN " })?;
-            f.write_str("( ")?;
+                f.write_str("( ")?;
                 display_list_comma_separated(list, f)?;
-            f.write_str(" )")?;
+                f.write_str(" )")?;
                 Ok(())
             }
             Expression::Between { not, low, high } => write!(
@@ -150,6 +158,10 @@ impl fmt::Display for Expression {
                 display_list_comma_separated(list, f)?;
                 f.write_str(")")?;
 
+                Ok(())
+            }
+            Expression::Function { name, args } => {
+                write!(f, "{}{}", name, args)?;
                 Ok(())
             }
         }
@@ -350,15 +362,15 @@ impl fmt::Display for IntoArg {
 pub enum TableSource {
     Table {
         name: Expression,
-        is_an: bool,
+        is_as: bool,
         alias: Option<String>,
     },
     Derived,
     Pivot,
     Unpivot,
     TableValuedFunction {
-        expression: Expression,
-        is_an: bool,
+        function: Expression,
+        is_as: bool,
         alias: Option<String>,
     },
 }
@@ -366,7 +378,11 @@ pub enum TableSource {
 impl fmt::Display for TableSource {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match &self {
-            TableSource::Table { name, is_an, alias } => match alias {
+            TableSource::Table {
+                name,
+                is_as: is_an,
+                alias,
+            } => match alias {
                 Some(alias) => {
                     if *is_an {
                         write!(f, "{} AS {}", name, alias)
@@ -380,19 +396,21 @@ impl fmt::Display for TableSource {
             TableSource::Pivot => write!(f, "PIVOT"),
             TableSource::Unpivot => write!(f, "UNPIVOT"),
             TableSource::TableValuedFunction {
-                expression,
-                is_an,
+                function,
+                is_as,
                 alias,
-            } => match alias {
-                Some(alias) => {
-                    if *is_an {
-                        write!(f, "{} AS {}", expression, alias)
+            } => {
+                write!(f, "{}", function)?;
+                if let Some(alias) = alias {
+                    if *is_as {
+                        write!(f, " AS {}", alias)?;
                     } else {
-                        write!(f, "{} {}", expression, alias)
+                        write!(f, " {}", alias)?;
                     }
                 }
-                None => write!(f, "{}", expression),
-            },
+
+                Ok(())
+            }
         }
     }
 }
