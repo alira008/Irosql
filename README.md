@@ -23,12 +23,12 @@ make sense of the queries that are given to it
         - [ ] with aggregate functions
     - [ ] from clause
         - [x] basic table
-        - [ ] table with alias
+        - [x] table with alias
         - [ ] table valued function
         - [ ] pivot table
         - [ ] unpivot table
         - [ ] function
-        - [ ] joins
+        - [x] joins
     - [ ] where clause 
         - [x] with subqueries
         - [x] with numbers
