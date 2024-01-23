@@ -586,6 +586,43 @@ impl<'a> Parser<'a> {
         })
     }
 
+    fn parse_partition_by_args(&mut self) -> Result<Vec<ast::Expression>, String> {
+        // check if the next token is BY
+        self.expect_kind(Kind::Keyword(Keyword::BY), &self.peek_token)?;
+        self.next_token();
+
+        // get the columns to order by
+        let mut args = vec![];
+        while !self.peek_token_is(Kind::Keyword(Keyword::ORDER))
+            && !self.peek_token_is(Kind::Keyword(Keyword::ROWS))
+            && !self.peek_token_is(Kind::Keyword(Keyword::RANGE))
+            && !self.peek_token_is(Kind::RightParen)
+            && !self.peek_token_is(Kind::Eof)
+        {
+            self.next_token();
+
+            if args.len() > 0 {
+                // expect a COMMA before the next GROUP BY expression
+                self.expect_kind(Kind::Comma, &self.current_token)?;
+
+                // consume the COMMA
+                self.next_token();
+            }
+
+            let expression = self.parse_expression(PRECEDENCE_LOWEST)?;
+            args.push(expression);
+        }
+
+        if args.len() == 0 {
+            self.expected(
+                "PARTITION BY items in PARTITION BY expression",
+                &self.peek_token,
+            )?;
+        }
+
+        Ok(args)
+    }
+
     fn parse_group_by_args(&mut self) -> Result<Vec<ast::Expression>, String> {
         // check if the next token is BY
         self.expect_kind(Kind::Keyword(Keyword::BY), &self.peek_token)?;
@@ -626,6 +663,8 @@ impl<'a> Parser<'a> {
         // get the columns to order by
         let mut order_by_args = vec![];
         while !self.peek_token_is(Kind::Keyword(Keyword::OFFSET))
+            && !self.peek_token_is(Kind::RightParen)
+            && !self.peek_token_is(Kind::Keyword(Keyword::ROWS))
             && !self.peek_token_is(Kind::SemiColon)
             && !self.peek_token_is(Kind::Eof)
         {
@@ -640,6 +679,12 @@ impl<'a> Parser<'a> {
             }
 
             let expression = self.parse_expression(PRECEDENCE_LOWEST)?;
+            if !matches!(
+                expression,
+                ast::Expression::Literal(_) | ast::Expression::CompoundLiteral(_)
+            ) {
+                self.expected("column in ORDER BY expression", &self.peek_token)?;
+            }
 
             let mut is_asc = None;
             // check if we have an ASC or DESC keyword
@@ -663,22 +708,6 @@ impl<'a> Parser<'a> {
         }
 
         Ok(order_by_args)
-    }
-
-    fn parse_expression(&mut self, precedence: u8) -> Result<ast::Expression, String> {
-        // check if the current token is an identifier
-        // or if it is a prefix operator
-        let mut left_expression = self.parse_prefix_expression()?;
-
-        // parse the infix expression
-        while precedence < self.peek_precedence() {
-            // move to the next token
-            self.next_token();
-
-            left_expression = self.parse_infix_expression(left_expression)?;
-        }
-
-        Ok(left_expression)
     }
 
     fn parse_expression_list(&mut self) -> Result<Vec<ast::Expression>, String> {
@@ -738,6 +767,199 @@ impl<'a> Parser<'a> {
         })
     }
 
+    fn parse_over_clause(&mut self) -> Result<ast::OverClause, String> {
+        self.expect_kind(Kind::Keyword(Keyword::OVER), &self.peek_token)?;
+        self.next_token();
+        self.expect_kind(Kind::LeftParen, &self.peek_token)?;
+        self.next_token();
+
+        let mut partition_by = vec![];
+        if self.peek_token_is(Kind::Keyword(Keyword::PARTITION)) {
+            self.next_token();
+            partition_by = self.parse_partition_by_args()?;
+        }
+
+        let mut order_by = vec![];
+        if self.peek_token_is(Kind::Keyword(Keyword::ORDER)) {
+            self.next_token();
+            order_by = self.parse_order_by_args()?;
+        }
+
+        let mut window_frame = None;
+        if self.peek_token_is(Kind::Keyword(Keyword::ROWS))
+            || self.peek_token_is(Kind::Keyword(Keyword::RANGE))
+        {
+            self.next_token();
+            let mut rows_or_range = ast::RowsOrRange::Rows;
+            if self.current_token_is(Kind::Keyword(Keyword::RANGE)) {
+                rows_or_range = ast::RowsOrRange::Range;
+            }
+
+            // parse window frame
+            let mut window_frame_start = None;
+            let mut window_frame_end = None;
+            if self.peek_token_is(Kind::Keyword(Keyword::BETWEEN)) {
+                self.next_token();
+                // check for unbounded preceding
+                if self.peek_token_is(Kind::Keyword(Keyword::UNBOUNDED)) {
+                    self.next_token();
+                    self.expect_kind(Kind::Keyword(Keyword::PRECEDING), &self.peek_token)?;
+                    self.next_token();
+                    window_frame_start = Some(ast::WindowFrameBound::UnboundedPreceding);
+                }
+                // check for current row
+                else if self.peek_token_is(Kind::Keyword(Keyword::CURRENT)) {
+                    self.next_token();
+                    self.expect_kind(Kind::Keyword(Keyword::ROW), &self.peek_token)?;
+                    self.next_token();
+                    window_frame_start = Some(ast::WindowFrameBound::CurrentRow);
+                }
+                // check for number
+                else if self.peek_token_is(Kind::Number) {
+                    self.next_token();
+                    let number = self.current_token.clone();
+                    window_frame_start = Some(ast::WindowFrameBound::Preceding(
+                        ast::Expression::Literal(number),
+                    ));
+                } else {
+                    self.expected(
+                        "UNBOUNDED PRECEDING or CURRENT ROW or NUMBER",
+                        &self.peek_token,
+                    )?;
+                }
+
+                // check for AND
+                self.expect_kind(Kind::Keyword(Keyword::AND), &self.peek_token)?;
+                self.next_token();
+
+                // check for unbounded following
+                if self.peek_token_is(Kind::Keyword(Keyword::UNBOUNDED)) {
+                    self.next_token();
+                    self.expect_kind(Kind::Keyword(Keyword::FOLLOWING), &self.peek_token)?;
+                    self.next_token();
+                    window_frame_end = Some(ast::WindowFrameBound::UnboundedFollowing);
+                }
+                // check for current row
+                else if self.peek_token_is(Kind::Keyword(Keyword::CURRENT)) {
+                    self.next_token();
+                    self.expect_kind(Kind::Keyword(Keyword::ROW), &self.peek_token)?;
+                    self.next_token();
+                    window_frame_end = Some(ast::WindowFrameBound::CurrentRow);
+                }
+                // check for number
+                else if self.peek_token_is(Kind::Number) {
+                    self.next_token();
+                    let number = self.current_token.clone();
+                    window_frame_end = Some(ast::WindowFrameBound::Preceding(
+                        ast::Expression::Literal(number),
+                    ));
+                } else {
+                    self.expected(
+                        "UNBOUNDED FOLLOWING or CURRENT ROW or NUMBER",
+                        &self.peek_token,
+                    )?;
+                }
+            } else {
+                // check for unbounded preceding
+                if self.peek_token_is(Kind::Keyword(Keyword::UNBOUNDED)) {
+                    self.next_token();
+                    self.expect_kind(Kind::Keyword(Keyword::PRECEDING), &self.peek_token)?;
+                    self.next_token();
+                    window_frame_start = Some(ast::WindowFrameBound::UnboundedPreceding);
+                }
+                // check for current row
+                else if self.peek_token_is(Kind::Keyword(Keyword::CURRENT)) {
+                    self.next_token();
+                    self.expect_kind(Kind::Keyword(Keyword::ROW), &self.peek_token)?;
+                    self.next_token();
+                    window_frame_start = Some(ast::WindowFrameBound::CurrentRow);
+                }
+                // check for number
+                else if self.peek_token_is(Kind::Number) {
+                    self.next_token();
+                    let number = self.current_token.clone();
+                    window_frame_start = Some(ast::WindowFrameBound::Preceding(
+                        ast::Expression::Literal(number),
+                    ));
+                } else {
+                    self.expected(
+                        "UNBOUNDED PRECEDING or CURRENT ROW or NUMBER",
+                        &self.peek_token,
+                    )?;
+                }
+            }
+
+            if let Some(window_frame_start_unwrapped) = window_frame_start {
+                window_frame = Some(ast::WindowFrame {
+                    rows_or_range,
+                    start: window_frame_start_unwrapped,
+                    end: window_frame_end,
+                });
+            } else {
+                self.expected("window frame start", &self.peek_token)?;
+            }
+        }
+
+        self.expect_kind(Kind::RightParen, &self.peek_token)?;
+        self.next_token();
+
+        let over = ast::OverClause {
+            partition_by,
+            order_by,
+            window_frame,
+        };
+
+        Ok(over)
+    }
+
+    fn parse_function(
+        &mut self,
+        function_name: ast::Expression,
+    ) -> Result<ast::Expression, String> {
+        // check if the current token is a left parenthesis
+        self.expect_kind(Kind::LeftParen, &self.peek_token)?;
+        // skip the left parenthesis
+        self.next_token();
+
+        // parse the expression list
+        let expression_list = self.parse_expression_list()?;
+        self.expect_kind(Kind::RightParen, &self.peek_token)?;
+        // go to right parenthesis
+        self.next_token();
+
+        if self.peek_token_is(Kind::Keyword(Keyword::OVER)) {
+            // parse the over clause
+            let over = self.parse_over_clause()?;
+            return Ok(ast::Expression::Function {
+                name: Box::new(function_name),
+                args: Box::new(ast::Expression::ExpressionList(expression_list)),
+                over: Some(Box::new(over)),
+            });
+        }
+
+        return Ok(ast::Expression::Function {
+            name: Box::new(function_name),
+            args: Box::new(ast::Expression::ExpressionList(expression_list)),
+            over: None,
+        });
+    }
+
+    fn parse_expression(&mut self, precedence: u8) -> Result<ast::Expression, String> {
+        // check if the current token is an identifier
+        // or if it is a prefix operator
+        let mut left_expression = self.parse_prefix_expression()?;
+
+        // parse the infix expression
+        while precedence < self.peek_precedence() {
+            // move to the next token
+            self.next_token();
+
+            left_expression = self.parse_infix_expression(left_expression)?;
+        }
+
+        Ok(left_expression)
+    }
+
     fn parse_prefix_expression(&mut self) -> Result<ast::Expression, String> {
         match self.current_token.kind() {
             Kind::Ident | Kind::Number | Kind::Asterisk => {
@@ -754,38 +976,14 @@ impl<'a> Parser<'a> {
                         idents.push(self.current_token.clone());
                     }
                     if self.peek_token_is(Kind::LeftParen) {
-                        // skip the left parenthesis
-                        self.next_token();
-
-                        // parse the expression list
-                        let expression_list = self.parse_expression(PRECEDENCE_LOWEST)?;
-                        if !matches!(expression_list, ast::Expression::ExpressionList(_)) {
-                            self.expected("expected function parameters", &self.current_token)?;
-                        }
-
-                        return Ok(ast::Expression::Function {
-                            name: Box::new(ast::Expression::CompoundLiteral(idents)),
-                            args: Box::new(expression_list),
-                        });
+                        return Ok(self.parse_function(ast::Expression::CompoundLiteral(idents))?);
                     } else {
                         return Ok(ast::Expression::CompoundLiteral(idents));
                     }
                 } else {
                     let ident = self.current_token.clone();
                     if self.peek_token_is(Kind::LeftParen) {
-                        // skip the left parenthesis
-                        self.next_token();
-
-                        // parse the expression list
-                        let expression_list = self.parse_expression(PRECEDENCE_LOWEST)?;
-                        if !matches!(expression_list, ast::Expression::ExpressionList(_)) {
-                            self.expected("expected function parameters", &self.current_token)?;
-                        }
-
-                        return Ok(ast::Expression::Function {
-                            name: Box::new(ast::Expression::Literal(ident)),
-                            args: Box::new(expression_list),
-                        });
+                        return Ok(self.parse_function(ast::Expression::Literal(ident))?);
                     } else {
                         return Ok(ast::Expression::Literal(ident));
                     }
@@ -1144,7 +1342,7 @@ impl<'a> Parser<'a> {
             "^".repeat(pointer_literal_len)
         );
         format!(
-            "Expected {}, found {} at {}\n{}\n{}. ",
+            "Expected '{}', found {} at {}\n{}\n{}. ",
             expected,
             found.literal(),
             found.location(),
@@ -1163,6 +1361,9 @@ mod tests {
         let lexer = lexer::Lexer::new(input);
         let mut parser = Parser::new(lexer);
         let query = parser.parse();
+        for error in parser.errors() {
+            println!("{}", error);
+        }
 
         let expected_query = ast::Query {
             statements: vec![ast::Statement::Select(Box::new(ast::SelectStatement {

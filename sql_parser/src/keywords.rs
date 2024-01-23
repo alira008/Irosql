@@ -61,6 +61,7 @@ define_keywords!(
     COT,
     COUNT,
     CREATE,
+    CURRENT,
     DATE,
     DATETIME,
     DAY,
@@ -69,7 +70,7 @@ define_keywords!(
     DECIMAL,
     DECLARE,
     DEGREES,
-    DFEAULT,
+    DEFAULT,
     DELETE,
     DENSE_RANK,
     DESC,
@@ -90,6 +91,7 @@ define_keywords!(
     FIRST_VALUE,
     FLOAT,
     FLOOR,
+    FOLLOWING,
     FOREIGN,
     FROM,
     FULL,
@@ -149,9 +151,11 @@ define_keywords!(
     PERCENT,
     PI,
     POWER,
+    PRECEDING,
     PROCEDURE,
     RADIANS,
     RANDS,
+    RANGE,
     RANK,
     RETURN,
     RETURNS,
@@ -221,5 +225,18 @@ pub fn lookup_keyword(keyword: &str) -> Option<Keyword> {
     match ALL_KEYWORDS.binary_search(&normalized_keyword.as_str()) {
         Ok(index) => Some(ALL_KEYWORDS_INDEX[index].clone()),
         Err(_) => None,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_lookup() {
+        let keyword_str = "DESC";
+        let keyword = lookup_keyword(keyword_str);
+
+        assert_eq!(Some(Keyword::DESC), keyword)
     }
 }

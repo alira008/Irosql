@@ -98,6 +98,7 @@ pub enum Expression {
     Function {
         name: Box<Expression>,
         args: Box<Expression>,
+        over: Option<Box<OverClause>>,
     },
 }
 
@@ -160,11 +161,94 @@ impl fmt::Display for Expression {
 
                 Ok(())
             }
-            Expression::Function { name, args } => {
+            Expression::Function { name, args, over } => {
                 write!(f, "{}{}", name, args)?;
+                if let Some(over_clause) = over {
+                    write!(f, " OVER ({})", over_clause)?;
+                }
                 Ok(())
             }
         }
+    }
+}
+
+#[derive(Debug, PartialEq, Clone)]
+pub struct OverClause {
+    pub partition_by: Vec<Expression>,
+    pub order_by: Vec<OrderByArg>,
+    pub window_frame: Option<WindowFrame>,
+}
+
+#[derive(Debug, PartialEq, Clone)]
+pub enum RowsOrRange {
+    Rows,
+    Range,
+}
+
+#[derive(Debug, PartialEq, Clone)]
+pub enum WindowFrameBound {
+    CurrentRow,
+    Preceding(Expression),
+    Following(Expression),
+    UnboundedPreceding,
+    UnboundedFollowing,
+}
+
+#[derive(Debug, PartialEq, Clone)]
+pub struct WindowFrame {
+    pub rows_or_range: RowsOrRange,
+    pub start: WindowFrameBound,
+    pub end: Option<WindowFrameBound>,
+}
+
+impl fmt::Display for WindowFrameBound {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match &self {
+            WindowFrameBound::CurrentRow => write!(f, "CURRENT ROW"),
+            WindowFrameBound::Preceding(expr) => write!(f, "{} PRECEDING", expr),
+            WindowFrameBound::Following(expr) => write!(f, "{} FOLLOWING", expr),
+            WindowFrameBound::UnboundedPreceding => write!(f, "UNBOUNDED PRECEDING"),
+            WindowFrameBound::UnboundedFollowing => write!(f, "UNBOUNDED FOLLOWING"),
+        }
+    }
+}
+
+impl fmt::Display for RowsOrRange {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match &self {
+            RowsOrRange::Rows => write!(f, "ROWS"),
+            RowsOrRange::Range => write!(f, "RANGE"),
+        }
+    }
+}
+
+impl fmt::Display for WindowFrame {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}", self.rows_or_range)?;
+        if let Some(end) = &self.end {
+            write!(f, " BETWEEN {}", self.start)?;
+            write!(f, " AND {}", end)?;
+        } else {
+            write!(f, " {}", self.start)?;
+        }
+        Ok(())
+    }
+}
+
+impl fmt::Display for OverClause {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        if !self.partition_by.is_empty() {
+            write!(f, "PARTITION BY ")?;
+            display_list_comma_separated(&self.partition_by, f)?;
+        }
+        if !self.order_by.is_empty() {
+            write!(f, " ORDER BY ")?;
+            display_list_comma_separated(&self.order_by, f)?;
+        }
+        if let Some(window_frame) = &self.window_frame {
+            write!(f, " {}", window_frame)?;
+        }
+        Ok(())
     }
 }
 
