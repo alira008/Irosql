@@ -1,8 +1,4 @@
 [workspace]
 resolver = "2"
 
-members = [
-    "sql_lsp",
-    "sql_parser",
-    "sql_repl"
-]
+members = ["sql_formatter", "sql_lsp", "sql_parser", "sql_repl"]
