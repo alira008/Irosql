@@ -65,10 +65,77 @@ impl<'a> Parser<'a> {
         match self.current_token.kind() {
             Kind::Keyword(keyword) => match keyword {
                 Keyword::SELECT => return self.parse_select_statement(),
+                Keyword::WITH => return self.parse_cte_statement(),
                 _ => return Err(format!("Unexpected keyword: {:#?}", keyword)),
             },
             _ => return Err(format!("Unexpected token: {:#?}", self.current_token)),
         }
+    }
+
+    fn parse_cte_statement(&mut self) -> Result<ast::Statement, String> {
+        let mut ctes = vec![];
+
+        while !self.peek_token_is(Kind::Keyword(Keyword::SELECT)) && !self.peek_token_is(Kind::Eof)
+        {
+            if ctes.len() > 0 {
+                // expect a COMMA before the next CTE expression
+                self.expect_kind(Kind::Comma, &self.peek_token)?;
+                // consume the COMMA
+                self.next_token();
+            }
+
+            // check for the expression name
+            self.expect_kind(Kind::Ident, &self.peek_token)?;
+            self.next_token();
+
+            let mut select_items = None;
+            let cte_name = self.current_token.clone();
+
+            if self.peek_token_is(Kind::LeftParen) {
+                // go to the left paren
+                self.next_token();
+
+                // parse the column list
+                select_items = Some(self.parse_expression_list()?);
+
+                // go to the right paren
+                self.next_token();
+            }
+
+            self.expect_kind(Kind::Keyword(Keyword::AS), &self.peek_token)?;
+            self.next_token();
+            self.expect_kind(Kind::LeftParen, &self.peek_token)?;
+            self.next_token();
+
+            // check for the select keyword
+            self.expect_kind(Kind::Keyword(Keyword::SELECT), &self.peek_token)?;
+            self.next_token();
+            let select_statement = self.parse_select_statement()?;
+
+            self.expect_kind(Kind::RightParen, &self.peek_token)?;
+            self.next_token();
+
+            let cte = ast::CommonTableExpression {
+                name: ast::Expression::Literal(cte_name),
+                columns: if let Some(select_items) = select_items {
+                    select_items
+                } else {
+                    vec![]
+                },
+                query: select_statement,
+            };
+            ctes.push(cte);
+        }
+
+        // check for the select keyword
+        self.expect_kind(Kind::Keyword(Keyword::SELECT), &self.peek_token)?;
+        self.next_token();
+        let query = self.parse_select_statement()?;
+
+        Ok(ast::Statement::CTE {
+            ctes,
+            statement: Box::new(query),
+        })
     }
 
     fn parse_select_statement(&mut self) -> Result<ast::Statement, String> {
@@ -1116,6 +1183,47 @@ impl<'a> Parser<'a> {
                     return self.parse_grouping();
                 }
             }
+            Kind::Keyword(Keyword::DENSE_RANK)
+            | Kind::Keyword(Keyword::RANK)
+            | Kind::Keyword(Keyword::ROW_NUMBER)
+            | Kind::Keyword(Keyword::ABS)
+            | Kind::Keyword(Keyword::ACOS)
+            | Kind::Keyword(Keyword::ASIN)
+            | Kind::Keyword(Keyword::ATAN)
+            | Kind::Keyword(Keyword::CEILING)
+            | Kind::Keyword(Keyword::COS)
+            | Kind::Keyword(Keyword::COT)
+            | Kind::Keyword(Keyword::DEGREES)
+            | Kind::Keyword(Keyword::EXP)
+            | Kind::Keyword(Keyword::FLOOR)
+            | Kind::Keyword(Keyword::LOG)
+            | Kind::Keyword(Keyword::LOG10)
+            | Kind::Keyword(Keyword::PI)
+            | Kind::Keyword(Keyword::POWER)
+            | Kind::Keyword(Keyword::RADIANS)
+            | Kind::Keyword(Keyword::RANDS)
+            | Kind::Keyword(Keyword::ROUND)
+            | Kind::Keyword(Keyword::SIGN)
+            | Kind::Keyword(Keyword::SIN)
+            | Kind::Keyword(Keyword::SQRT)
+            | Kind::Keyword(Keyword::SQUARE)
+            | Kind::Keyword(Keyword::TAN)
+            | Kind::Keyword(Keyword::FIRST_VALUE)
+            | Kind::Keyword(Keyword::LAST_VALUE)
+            | Kind::Keyword(Keyword::LAG)
+            | Kind::Keyword(Keyword::LEAD)
+            | Kind::Keyword(Keyword::AVG)
+            | Kind::Keyword(Keyword::COUNT)
+            | Kind::Keyword(Keyword::MAX)
+            | Kind::Keyword(Keyword::MIN)
+            | Kind::Keyword(Keyword::STDEV)
+            | Kind::Keyword(Keyword::STDEVP)
+            | Kind::Keyword(Keyword::SUM)
+            | Kind::Keyword(Keyword::VAR)
+            | Kind::Keyword(Keyword::VARP) => {
+                let function_name = self.current_token.clone();
+                Ok(self.parse_function(ast::Expression::Literal(function_name))?)
+            }
             _ => return Err(self.expected_err("expression", &self.current_token)),
         }
     }
@@ -1204,7 +1312,6 @@ impl<'a> Parser<'a> {
                     });
                 }
             }
-
             Kind::Keyword(Keyword::IN) => self.parse_in_expression(left),
             Kind::Keyword(Keyword::NOT) if self.peek_token_is(Kind::Keyword(Keyword::IN)) => {
                 self.parse_in_expression(left)
@@ -1242,51 +1349,6 @@ impl<'a> Parser<'a> {
             | Kind::Keyword(Keyword::OR)
             | Kind::Keyword(Keyword::SOME) => PRECEDENCE_OTHER_LOGICALS,
             _ => PRECEDENCE_LOWEST,
-        }
-    }
-
-    fn is_valid_function_name(&self, token: &Token) -> bool {
-        match token.kind() {
-            Kind::Ident
-            | Kind::Keyword(Keyword::DENSE_RANK)
-            | Kind::Keyword(Keyword::RANK)
-            | Kind::Keyword(Keyword::ROW_NUMBER)
-            | Kind::Keyword(Keyword::ABS)
-            | Kind::Keyword(Keyword::ACOS)
-            | Kind::Keyword(Keyword::ASIN)
-            | Kind::Keyword(Keyword::ATAN)
-            | Kind::Keyword(Keyword::CEILING)
-            | Kind::Keyword(Keyword::COS)
-            | Kind::Keyword(Keyword::COT)
-            | Kind::Keyword(Keyword::DEGREES)
-            | Kind::Keyword(Keyword::EXP)
-            | Kind::Keyword(Keyword::FLOOR)
-            | Kind::Keyword(Keyword::LOG)
-            | Kind::Keyword(Keyword::LOG10)
-            | Kind::Keyword(Keyword::PI)
-            | Kind::Keyword(Keyword::POWER)
-            | Kind::Keyword(Keyword::RADIANS)
-            | Kind::Keyword(Keyword::RANDS)
-            | Kind::Keyword(Keyword::ROUND)
-            | Kind::Keyword(Keyword::SIGN)
-            | Kind::Keyword(Keyword::SIN)
-            | Kind::Keyword(Keyword::SQRT)
-            | Kind::Keyword(Keyword::SQUARE)
-            | Kind::Keyword(Keyword::TAN)
-            | Kind::Keyword(Keyword::FIRST_VALUE)
-            | Kind::Keyword(Keyword::LAST_VALUE)
-            | Kind::Keyword(Keyword::LAG)
-            | Kind::Keyword(Keyword::LEAD)
-            | Kind::Keyword(Keyword::AVG)
-            | Kind::Keyword(Keyword::COUNT)
-            | Kind::Keyword(Keyword::MAX)
-            | Kind::Keyword(Keyword::MIN)
-            | Kind::Keyword(Keyword::STDEV)
-            | Kind::Keyword(Keyword::STDEVP)
-            | Kind::Keyword(Keyword::SUM)
-            | Kind::Keyword(Keyword::VAR)
-            | Kind::Keyword(Keyword::VARP) => true,
-            _ => false,
         }
     }
 

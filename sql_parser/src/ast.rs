@@ -164,7 +164,7 @@ impl fmt::Display for Expression {
             Expression::Function { name, args, over } => {
                 write!(f, "{}{}", name, args)?;
                 if let Some(over_clause) = over {
-                    write!(f, " OVER ({})", over_clause)?;
+                    write!(f, " OVER({})", over_clause)?;
                 }
                 Ok(())
             }
@@ -242,25 +242,50 @@ impl fmt::Display for OverClause {
             display_list_comma_separated(&self.partition_by, f)?;
         }
         if !self.order_by.is_empty() {
-            write!(f, " ORDER BY ")?;
+            write!(f, "ORDER BY ")?;
             display_list_comma_separated(&self.order_by, f)?;
         }
         if let Some(window_frame) = &self.window_frame {
-            write!(f, " {}", window_frame)?;
+            write!(f, "{}", window_frame)?;
         }
         Ok(())
     }
 }
 
 #[derive(Debug, PartialEq, Clone)]
+pub struct CommonTableExpression {
+    pub name: Expression,
+    pub columns: Vec<Expression>,
+    pub query: Statement,
+}
+
+impl fmt::Display for CommonTableExpression {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}", self.name)?;
+        if !self.columns.is_empty() {
+            write!(f, "(")?;
+            display_list_comma_separated(&self.columns, f)?;
+            write!(f, ")")?;
+        }
+        write!(f, " AS ({})", self.query)
+    }
+}
+
+#[derive(Debug, PartialEq, Clone)]
 pub enum Statement {
     Select(Box<SelectStatement>),
+    CTE{ctes: Vec<CommonTableExpression>, statement: Box<Statement>},
 }
 
 impl fmt::Display for Statement {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match &self {
             Statement::Select(select) => write!(f, "{}", select),
+            Statement::CTE { ctes, statement } => {
+                write!(f, "WITH ")?;
+                display_list_comma_separated(ctes, f)?;
+                write!(f, " {}", statement)
+            }
         }
     }
 }
