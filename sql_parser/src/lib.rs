@@ -1,7 +1,8 @@
 pub mod ast;
-mod keywords;
+pub mod keywords;
 pub mod lexer;
 pub mod token;
+pub mod visitor;
 use keywords::Keyword;
 use token::{Kind, Literal, Token};
 

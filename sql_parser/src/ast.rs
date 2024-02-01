@@ -179,7 +179,7 @@ pub struct OverClause {
     pub window_frame: Option<WindowFrame>,
 }
 
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq, Clone, Copy)]
 pub enum RowsOrRange {
     Rows,
     Range,
