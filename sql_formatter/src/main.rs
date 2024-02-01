@@ -2,6 +2,7 @@ use clap::Parser;
 use settings::{IndentCommaLists, KeywordCase};
 
 mod settings;
+mod formatter;
 
 #[derive(Parser)]
 #[command(name = "sql_formatter", version = "0.1.0", author = "Ariel")]

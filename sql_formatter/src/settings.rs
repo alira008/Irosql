@@ -16,14 +16,14 @@ pub enum KeywordCase {
 
 #[derive(Args, Clone, Debug, Copy)]
 pub struct FormatterSettings {
-    indent_comma_lists: Option<IndentCommaLists>,
-    indent_in_lists: bool,
-    ident_between_conditions: bool,
-    keyword_case: KeywordCase,
-    max_width: u32,
-    indent_width: u32,
-    use_tab: bool,
-    tab_width: u32,
+    pub indent_comma_lists: Option<IndentCommaLists>,
+    pub indent_in_lists: bool,
+    pub ident_between_conditions: bool,
+    pub keyword_case: KeywordCase,
+    pub max_width: u32,
+    pub indent_width: u32,
+    pub use_tab: bool,
+    pub tab_width: u32,
 }
 
 pub struct FormatterSettingsBuilder {
@@ -104,4 +104,3 @@ impl FormatterSettingsBuilder {
         }
     }
 }
-
