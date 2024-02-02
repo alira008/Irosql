@@ -37,9 +37,7 @@ pub trait Visitor {
         self.visit_select_where_clause(&query.where_clause);
         self.visit_select_group_by(&query.group_by);
         self.visit_select_having(&query.having);
-        for order_by in &query.order_by {
-            self.visit_select_order_by(order_by);
-        }
+        self.visit_select_order_by(&query.order_by);
         self.visit_select_offset(&query.offset);
         self.visit_select_fetch(&query.fetch);
     }
@@ -85,8 +83,10 @@ pub trait Visitor {
             self.visit_expression(having);
         }
     }
-    fn visit_select_order_by(&mut self, order_by: &OrderByArg) {
-        self.visit_expression(&order_by.column);
+    fn visit_select_order_by(&mut self, order_by_args: &[OrderByArg]) {
+        for order_by in order_by_args {
+            self.visit_expression(&order_by.column);
+        }
     }
     fn visit_select_offset(&mut self, arg: &Option<OffsetArg>) {
         if let Some(offset_arg) = arg {
@@ -114,7 +114,7 @@ pub trait Visitor {
         match table {
             TableSource::Table { name, .. } => walk_expression(self, name),
             TableSource::TableValuedFunction { function, .. } => walk_expression(self, function),
-            _ => (),
+            _ => unimplemented!(),
         }
     }
     fn visit_table_join(&mut self, join: &Join) {
@@ -196,9 +196,7 @@ pub trait Visitor {
         for partition_by in &over_clause.partition_by {
             self.visit_expression(partition_by);
         }
-        for order_by in &over_clause.order_by {
-            self.visit_select_order_by(order_by);
-        }
+        self.visit_select_order_by(&over_clause.order_by);
         if let Some(window_frame) = &over_clause.window_frame {
             self.visit_window_frame(window_frame);
         }
@@ -218,7 +216,7 @@ pub trait Visitor {
             _ => (),
         }
     }
-    fn visit_compount_literal(&mut self, tokens: &[Token]) {
+    fn visit_compound_literal(&mut self, tokens: &[Token]) {
         for token in tokens {
             self.visit_token(token);
         }
@@ -229,7 +227,7 @@ pub trait Visitor {
                 self.visit_cte(cte);
             }
 
-            self.visit_statement(statement);
+            self.visit_select_query(statement);
         }
     }
     fn visit_cte(&mut self, cte: &CommonTableExpression) {
@@ -251,7 +249,7 @@ pub fn walk_expression<V: Visitor + ?Sized>(visitor: &mut V, e: &Expression) {
         Expression::Literal(identifier) => visitor.visit_token(identifier),
         Expression::Binary { .. } => visitor.visit_binary_expression(e),
         Expression::Unary { .. } => visitor.visit_unary_expression(e),
-        Expression::CompoundLiteral(tokens) => visitor.visit_compount_literal(tokens),
+        Expression::CompoundLiteral(tokens) => visitor.visit_compound_literal(tokens),
         Expression::Grouping(e) => visitor.visit_unary_expression(e),
         Expression::Subquery(s) => visitor.visit_statement(s),
         Expression::IsTrue(e) => visitor.visit_is_true_expression(e),
@@ -261,11 +259,11 @@ pub fn walk_expression<V: Visitor + ?Sized>(visitor: &mut V, e: &Expression) {
         Expression::InList { .. } => visitor.visit_in_list_expression(e),
         Expression::Between { .. } => visitor.visit_between_expression(e),
         Expression::Any { .. } => visitor.visit_any_expression(e),
-        Expression::All { .. } => visitor.visit_any_expression(e),
+        Expression::All { .. } => visitor.visit_all_expression(e),
         Expression::Some { .. } => visitor.visit_some_expression(e),
         Expression::Exists(e) => visitor.visit_exists_expression(e),
         Expression::ExpressionList(e) => visitor.visit_expression_list_expression(e),
-        Expression::Function { .. } => visitor.visit_some_expression(e),
+        Expression::Function { .. } => visitor.visit_function_expression(e),
     }
 }
 
@@ -276,8 +274,8 @@ pub fn walk_binary_expression<V: Visitor + ?Sized>(visitor: &mut V, expression: 
         operator,
     } = expression
     {
-        visitor.visit_token(operator);
         walk_expression(visitor, left);
+        visitor.visit_token(operator);
         walk_expression(visitor, right);
     }
 }

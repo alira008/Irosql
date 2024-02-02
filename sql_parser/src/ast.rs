@@ -274,7 +274,7 @@ impl fmt::Display for CommonTableExpression {
 #[derive(Debug, PartialEq, Clone)]
 pub enum Statement {
     Select(Box<SelectStatement>),
-    CTE{ctes: Vec<CommonTableExpression>, statement: Box<Statement>},
+    CTE{ctes: Vec<CommonTableExpression>, statement: Box<SelectStatement>},
 }
 
 impl fmt::Display for Statement {

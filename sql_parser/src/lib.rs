@@ -112,6 +112,21 @@ impl<'a> Parser<'a> {
             self.expect_kind(Kind::Keyword(Keyword::SELECT), &self.peek_token)?;
             self.next_token();
             let select_statement = self.parse_select_statement()?;
+            match &select_statement {
+                ast::Statement::Select(q) => {
+                    if q.order_by.len() > 0 && q.top.is_none() {
+                        return Err(
+                            "Order by is not allowed in cte query unless TOP clause is specified"
+                                .to_string(),
+                        );
+                    } else {
+                        if q.into_table.is_some() {
+                            return Err("INTO is not allowed in a cte query".to_string());
+                        }
+                    }
+                }
+                ast::Statement::CTE { .. } => unimplemented!(),
+            }
 
             self.expect_kind(Kind::RightParen, &self.peek_token)?;
             self.next_token();
@@ -131,12 +146,14 @@ impl<'a> Parser<'a> {
         // check for the select keyword
         self.expect_kind(Kind::Keyword(Keyword::SELECT), &self.peek_token)?;
         self.next_token();
-        let query = self.parse_select_statement()?;
 
-        Ok(ast::Statement::CTE {
-            ctes,
-            statement: Box::new(query),
-        })
+        match self.parse_select_statement()? {
+            ast::Statement::Select(query) => Ok(ast::Statement::CTE {
+                ctes,
+                statement: query,
+            }),
+            ast::Statement::CTE { .. } => Err("SELECT statement must be after CTE".to_string()),
+        }
     }
 
     fn parse_select_statement(&mut self) -> Result<ast::Statement, String> {
