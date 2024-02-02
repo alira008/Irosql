@@ -2,7 +2,6 @@ use clap::{Args, ValueEnum};
 
 #[derive(ValueEnum, Debug, Clone, Copy)]
 pub enum IndentCommaLists {
-    TrailingCommaWithSpaceAfter,
     TrailingComma,
     SpaceAfterComma,
 }
@@ -11,7 +10,6 @@ pub enum IndentCommaLists {
 pub enum KeywordCase {
     Upper,
     Lower,
-    NoChange,
 }
 
 #[derive(Args, Clone, Debug, Copy)]
@@ -96,7 +94,7 @@ impl FormatterSettingsBuilder {
             indent_comma_lists: self.indent_comma_lists,
             indent_in_lists: self.indent_in_lists.unwrap_or(false),
             ident_between_conditions: self.ident_between_conditions.unwrap_or(false),
-            keyword_case: self.keyword_case.unwrap_or(KeywordCase::Upper),
+            keyword_case: self.keyword_case.unwrap_or(KeywordCase::Lower),
             max_width: self.max_width.unwrap_or(80),
             indent_width: self.indent_width.unwrap_or(4),
             use_tab: self.use_tab.unwrap_or(true),
