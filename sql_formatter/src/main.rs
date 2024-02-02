@@ -56,12 +56,9 @@ fn main() {
         formatter_settings_builder = formatter_settings_builder.tab_width(tab_width);
     }
     let formatter_settings = formatter_settings_builder.build();
+    let mut formatter = formatter::Formatter::new(formatter_settings);
+    formatter.format(&cli.input);
 
-    let lexer = sql_parser::lexer::Lexer::new(&cli.input);
-    let mut parser = sql_parser::Parser::new(lexer);
-    let query = parser.parse();
-    let output = String::new();
-    for statement in query.statements {
-        println!("{:#?}", statement);
-    }
+    println!("{:#?}", formatter_settings);
+    println!("{}", formatter.formatted_query());
 }
