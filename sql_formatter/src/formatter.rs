@@ -275,7 +275,7 @@ impl Visitor for Formatter {
                 operator.kind(),
                 sql_parser::token::Kind::Keyword(sql_parser::keywords::Keyword::AND)
                     | sql_parser::token::Kind::Keyword(sql_parser::keywords::Keyword::OR)
-            ) && self.settings.ident_between_conditions
+            ) && self.settings.indent_between_conditions
             {
                 self.formatted_query.push_str("\n");
                 self.print_indent();
