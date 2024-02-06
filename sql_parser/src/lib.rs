@@ -67,9 +67,9 @@ impl<'a> Parser<'a> {
             Kind::Keyword(keyword) => match keyword {
                 Keyword::SELECT => return self.parse_select_statement(),
                 Keyword::WITH => return self.parse_cte_statement(),
-                _ => return Err(format!("Unexpected keyword: {:#?}", keyword)),
+                _ => return Err(self.expected_err("Expected Select or CTE keyword", &self.current_token)),
             },
-            _ => return Err(format!("Unexpected token: {:#?}", self.current_token)),
+            _ => return Err(self.expected_err("Expected MSQL keyword", &self.current_token)),
         }
     }
 
@@ -1400,7 +1400,7 @@ impl<'a> Parser<'a> {
             if i == 0 {
                 expected_string.push_str(&format!("{}", expected));
             } else {
-                expected_string.push_str(&format!("or {}", expected));
+                expected_string.push_str(&format!(" or {}", expected));
             }
         }
         self.expected(&expected_string, found)
