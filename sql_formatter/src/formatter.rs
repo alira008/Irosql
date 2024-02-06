@@ -4,6 +4,7 @@ use crate::settings::{FormatterSettings, KeywordCase};
 
 pub struct Formatter {
     settings: FormatterSettings,
+    indent_level: u32,
     formatted_query: String,
 }
 
@@ -12,6 +13,7 @@ impl Formatter {
         let formatted_query = "".to_string();
         Self {
             settings,
+            indent_level: 0,
             formatted_query,
         }
     }
@@ -29,6 +31,14 @@ impl Formatter {
         &self.formatted_query
     }
 
+    fn increase_indent(&mut self) {
+        self.indent_level += 1;
+    }
+
+    fn decrease_indent(&mut self) {
+        self.indent_level -= 1;
+    }
+
     fn print_keyword(&mut self, keyword: &str) {
         match self.settings.keyword_case {
             KeywordCase::Upper => self.formatted_query.push_str(&keyword.to_uppercase()),
@@ -37,36 +47,35 @@ impl Formatter {
     }
 
     fn print_indent(&mut self) {
-        let indent = self.settings.indent_width;
-        if self.settings.use_tab {
-            for _ in 0..indent {
-                self.formatted_query.push_str("\t");
-            }
-        } else {
-            for _ in 0..indent {
-                self.formatted_query.push_str(" ");
-            }
-        }
+        let indent_string = if self.settings.use_tab { "\t" } else { " " }
+            .repeat(self.settings.indent_width as usize)
+            .repeat(self.indent_level as usize);
+        self.formatted_query.push_str(&indent_string);
+    }
+
+    fn print_new_line(&mut self) {
+        self.formatted_query.push_str("\n");
+        self.print_indent();
     }
 
     fn print_select_column_comma(&mut self) {
+        self.increase_indent();
         if let Some(indent_comma_lists) = self.settings.indent_comma_lists {
             match indent_comma_lists {
                 crate::IndentCommaLists::TrailingComma => {
-                    self.formatted_query.push_str(",\n");
-                    self.print_indent();
+                    self.formatted_query.push_str(",");
+                    self.print_new_line();
                 }
                 crate::IndentCommaLists::SpaceAfterComma => {
-                    self.formatted_query.push_str("\n");
-                    self.print_indent();
+                    self.print_new_line();
                     self.formatted_query.push_str(", ");
                 }
             }
         } else {
-            self.formatted_query.push_str("\n");
-            self.print_indent();
+            self.print_new_line();
             self.formatted_query.push_str(",");
         }
+        self.decrease_indent();
     }
 
     fn print_expression_list_comma(&mut self) {
@@ -134,7 +143,7 @@ impl Visitor for Formatter {
             }
             self.visit_select_item(column);
         }
-        self.formatted_query.push_str("\n");
+        self.print_new_line();
     }
 
     fn visit_select_item(&mut self, item: &sql_parser::ast::SelectItem) {
@@ -148,8 +157,9 @@ impl Visitor for Formatter {
                 alias,
             } => {
                 self.visit_expression(expression);
+                self.formatted_query.push_str(" ");
                 if *as_token {
-                    self.print_keyword(" AS ");
+                    self.print_keyword("AS ");
                 }
                 self.formatted_query.push_str(alias);
             }
@@ -159,8 +169,9 @@ impl Visitor for Formatter {
                 alias,
             } => {
                 self.visit_expression(expression);
+                self.formatted_query.push_str(" ");
                 if *as_token {
-                    self.print_keyword(" AS ");
+                    self.print_keyword("AS ");
                 }
                 self.formatted_query.push_str(alias);
             }
@@ -216,15 +227,11 @@ impl Visitor for Formatter {
         if let Some(table_arg) = arg {
             self.print_keyword("FROM ");
             self.visit_table_source(&table_arg.table);
-            self.formatted_query.push_str("\n");
-            for (i, join) in table_arg.joins.iter().enumerate() {
-                if i == 0 {
-                    self.print_keyword("JOIN ");
-                }
-                self.visit_table_join(join);
-            }
             if table_arg.joins.len() > 0 {
-                self.formatted_query.push_str("\n");
+                self.print_new_line();
+            }
+            for join in table_arg.joins.iter() {
+                self.visit_table_join(join);
             }
         } else {
             unreachable!();
@@ -256,9 +263,9 @@ impl Visitor for Formatter {
 
     fn visit_select_where_clause(&mut self, where_clause: &Option<sql_parser::ast::Expression>) {
         if let Some(where_clause) = where_clause {
+            self.print_new_line();
             self.print_keyword("WHERE ");
             self.visit_expression(where_clause);
-            self.formatted_query.push_str("\n");
         }
     }
 
@@ -277,8 +284,9 @@ impl Visitor for Formatter {
                     | sql_parser::token::Kind::Keyword(sql_parser::keywords::Keyword::OR)
             ) && self.settings.indent_between_conditions
             {
-                self.formatted_query.push_str("\n");
-                self.print_indent();
+                self.increase_indent();
+                self.print_new_line();
+                self.decrease_indent();
             }
             self.visit_token(operator);
             self.formatted_query.push_str(" ");
@@ -289,6 +297,9 @@ impl Visitor for Formatter {
     }
 
     fn visit_select_group_by(&mut self, group_by: &[sql_parser::ast::Expression]) {
+        if group_by.len() > 0 {
+            self.print_new_line();
+        }
         for (i, expression) in group_by.iter().enumerate() {
             if i == 0 {
                 self.print_keyword("GROUP BY ");
@@ -298,22 +309,20 @@ impl Visitor for Formatter {
             }
             self.visit_expression(expression);
         }
-        if group_by.len() > 0 {
-            self.formatted_query.push_str("\n");
-        }
     }
 
     fn visit_select_having(&mut self, having_arg: &Option<sql_parser::ast::Expression>) {
         if let Some(having) = having_arg {
+            self.print_new_line();
             self.print_keyword("HAVING ");
             self.visit_expression(having);
-            self.formatted_query.push_str("\n");
         }
     }
 
     fn visit_select_order_by(&mut self, order_by_args: &[sql_parser::ast::OrderByArg]) {
         for (i, order_by) in order_by_args.iter().enumerate() {
             if i == 0 {
+                self.print_new_line();
                 self.print_keyword("ORDER BY ");
             }
             if i > 0 {
@@ -323,36 +332,33 @@ impl Visitor for Formatter {
             self.formatted_query.push_str(" ");
             if let Some(asc) = order_by.asc {
                 if asc {
-                    self.print_keyword("ASC ");
+                    self.print_keyword("ASC");
                 } else {
-                    self.print_keyword("DESC ");
+                    self.print_keyword("DESC");
                 }
             }
-        }
-        if order_by_args.len() > 0 {
-            self.formatted_query.push_str("\n");
         }
     }
 
     fn visit_select_offset(&mut self, arg: &Option<sql_parser::ast::OffsetArg>) {
         if let Some(offset) = arg {
+            self.print_new_line();
             self.print_keyword("OFFSET ");
             self.visit_expression(&offset.value);
             self.formatted_query.push_str(" ");
             self.visit_select_offset_fetch_row_or_rows(offset.row);
-            self.formatted_query.push_str("\n");
         }
     }
 
     fn visit_select_fetch(&mut self, arg: &Option<sql_parser::ast::FetchArg>) {
         if let Some(fetch) = arg {
+            self.print_new_line();
             self.print_keyword("FETCH ");
             self.visit_select_fetch_next_or_first(fetch.first);
             self.visit_expression(&fetch.value);
             self.formatted_query.push_str(" ");
             self.visit_select_offset_fetch_row_or_rows(fetch.row);
             self.print_keyword("ONLY ");
-            self.formatted_query.push_str("\n");
         }
     }
 
@@ -392,11 +398,11 @@ impl Visitor for Formatter {
             not,
         } = expression
         {
-            if *not {
-                self.print_keyword("NOT ");
-            }
-            self.print_keyword("IN ");
             self.visit_expression(expression);
+            if *not {
+                self.print_keyword(" NOT");
+            }
+            self.print_keyword(" IN ");
             self.formatted_query.push_str("(");
             for (i, expression) in list.iter().enumerate() {
                 if i > 0 {
@@ -494,9 +500,10 @@ impl Visitor for Formatter {
         }
     }
     fn visit_select_window_over_clause(&mut self, over_clause: &sql_parser::ast::OverClause) {
-        self.formatted_query.push_str("(\n");
-        self.print_indent();
-        self.print_indent();
+        self.formatted_query.push_str("(");
+        self.increase_indent();
+        self.increase_indent();
+        self.print_new_line();
 
         for (i, partition_by) in over_clause.partition_by.iter().enumerate() {
             if i == 0 {
@@ -515,10 +522,10 @@ impl Visitor for Formatter {
             self.visit_window_frame(window_frame);
         }
 
-        self.formatted_query.push_str("\n");
-        self.print_indent();
-        self.print_indent();
+        self.print_new_line();
         self.formatted_query.push_str(")");
+        self.decrease_indent();
+        self.decrease_indent();
     }
     fn visit_window_frame(&mut self, window_frame: &sql_parser::ast::WindowFrame) {
         if let Some(end) = &window_frame.end {
@@ -535,7 +542,12 @@ impl Visitor for Formatter {
             self.visit_window_frame_bound(&window_frame.start);
         }
     }
-    fn visit_window_frame_rows_or_range(&mut self, _rows_or_range: sql_parser::ast::RowsOrRange) {}
+    fn visit_window_frame_rows_or_range(&mut self, rows_or_range: sql_parser::ast::RowsOrRange) {
+        match rows_or_range {
+            sql_parser::ast::RowsOrRange::Rows => self.print_keyword("ROWS"),
+            sql_parser::ast::RowsOrRange::Range => self.print_keyword("RANGE"),
+        }
+    }
     fn visit_window_frame_bound(&mut self, bound: &sql_parser::ast::WindowFrameBound) {
         match bound {
             sql_parser::ast::WindowFrameBound::Preceding(expression) => {
@@ -570,7 +582,8 @@ impl Visitor for Formatter {
             self.print_keyword("WITH ");
             for (i, cte) in ctes.iter().enumerate() {
                 if i > 0 {
-                    self.formatted_query.push_str(",\n");
+                    self.formatted_query.push_str(",");
+                    self.print_new_line();
                 }
                 self.visit_cte(cte);
             }
@@ -590,14 +603,41 @@ impl Visitor for Formatter {
             self.visit_expression(column);
         }
         if cte.columns.len() > 0 {
-            self.formatted_query.push_str(")\n");
-        } else {
-            self.formatted_query.push_str("\n");
+            self.formatted_query.push_str(")");
         }
+        self.print_new_line();
 
-        self.print_keyword("AS\n");
-        self.formatted_query.push_str("(\n");
+        self.print_keyword("AS");
+        self.print_new_line();
+
+        self.formatted_query.push_str("(");
+        self.print_new_line();
+
+        self.increase_indent();
+        self.print_indent();
+
         self.visit_statement(&cte.query);
-        self.formatted_query.push_str(")\n");
+
+        self.decrease_indent();
+        self.print_new_line();
+
+        self.formatted_query.push_str(")");
+        self.print_new_line();
+    }
+
+    fn visit_subquery(&mut self, query: &sql_parser::ast::Statement) {
+        self.formatted_query.push_str("(");
+
+        self.increase_indent();
+        self.increase_indent();
+        self.print_new_line();
+
+        self.visit_statement(&query);
+
+        self.decrease_indent();
+        self.print_new_line();
+
+        self.formatted_query.push_str(")");
+        self.decrease_indent();
     }
 }

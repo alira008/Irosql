@@ -32,5 +32,4 @@ pub struct FormatterSettings {
     pub max_width: u32,
     pub indent_width: u32,
     pub use_tab: bool,
-    pub tab_width: u32,
 }

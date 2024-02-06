@@ -22,8 +22,6 @@ struct Cli {
     indent_width: u32,
     #[arg(short, long, default_value_t = false)]
     use_tab: bool,
-    #[arg(short, long, default_value_t = 4)]
-    tab_width: u32,
 }
 
 fn main() {
@@ -36,7 +34,6 @@ fn main() {
         max_width: cli.max_width,
         indent_width: cli.indent_width,
         use_tab: cli.use_tab,
-        tab_width: cli.tab_width,
     };
     let mut formatter = formatter::Formatter::new(formatter_settings);
     formatter.format(&cli.input);

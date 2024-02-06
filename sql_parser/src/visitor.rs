@@ -238,6 +238,9 @@ pub trait Visitor {
         }
         self.visit_statement(&cte.query);
     }
+    fn visit_subquery(&mut self, query: &Statement) {
+        self.visit_statement(&query);
+    }
 }
 
 pub fn walk_query<V: Visitor + ?Sized>(visitor: &mut V, query: &Query) {
@@ -251,7 +254,7 @@ pub fn walk_expression<V: Visitor + ?Sized>(visitor: &mut V, e: &Expression) {
         Expression::Unary { .. } => visitor.visit_unary_expression(e),
         Expression::CompoundLiteral(tokens) => visitor.visit_compound_literal(tokens),
         Expression::Grouping(e) => visitor.visit_unary_expression(e),
-        Expression::Subquery(s) => visitor.visit_statement(s),
+        Expression::Subquery(s) => visitor.visit_subquery(s),
         Expression::IsTrue(e) => visitor.visit_is_true_expression(e),
         Expression::IsNotTrue(e) => visitor.visit_is_not_true_expression(e),
         Expression::IsNull(e) => visitor.visit_is_null_expression(e),
