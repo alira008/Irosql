@@ -63,7 +63,7 @@ pub enum Expression {
         right: Box<Expression>,
     },
     Grouping(Box<Expression>),
-    Subquery(Box<Statement>),
+    Subquery(Box<SelectStatement>),
     IsTrue(Box<Expression>),
     IsNotTrue(Box<Expression>),
     IsNull(Box<Expression>),
@@ -274,7 +274,10 @@ impl fmt::Display for CommonTableExpression {
 #[derive(Debug, PartialEq, Clone)]
 pub enum Statement {
     Select(Box<SelectStatement>),
-    CTE{ctes: Vec<CommonTableExpression>, statement: Box<SelectStatement>},
+    CTE {
+        ctes: Vec<CommonTableExpression>,
+        statement: Box<SelectStatement>,
+    },
 }
 
 impl fmt::Display for Statement {
@@ -474,7 +477,11 @@ pub enum TableSource {
         is_as: bool,
         alias: Option<String>,
     },
-    Derived,
+    Derived {
+        query: Expression,
+        is_as: bool,
+        alias: String,
+    },
     Pivot,
     Unpivot,
     TableValuedFunction {
@@ -489,11 +496,11 @@ impl fmt::Display for TableSource {
         match &self {
             TableSource::Table {
                 name,
-                is_as: is_an,
+                is_as,
                 alias,
             } => match alias {
                 Some(alias) => {
-                    if *is_an {
+                    if *is_as {
                         write!(f, "{} AS {}", name, alias)
                     } else {
                         write!(f, "{} {}", name, alias)
@@ -501,7 +508,17 @@ impl fmt::Display for TableSource {
                 }
                 None => write!(f, "{}", name),
             },
-            TableSource::Derived => write!(f, "DERIVED"),
+            TableSource::Derived {
+                query,
+                is_as,
+                alias,
+            } => {
+                if *is_as {
+                    write!(f, "{} AS {}", query, alias)
+                } else {
+                    write!(f, "{} {}", query, alias)
+                }
+            }
             TableSource::Pivot => write!(f, "PIVOT"),
             TableSource::Unpivot => write!(f, "UNPIVOT"),
             TableSource::TableValuedFunction {

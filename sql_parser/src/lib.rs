@@ -349,27 +349,12 @@ impl<'a> Parser<'a> {
 
     fn parse_table_source(&mut self) -> Result<ast::TableSource, String> {
         // check if the next token is an identifier
-        self.expect_kind(Kind::Ident, &self.peek_token)?;
+        if !matches!(self.peek_token.kind(), Kind::Ident | Kind::LeftParen) {
+            return Err(self.expected_err("Identifier or left parenthesis for subquery", &self.peek_token));
+        }
         self.next_token();
 
         let table = self.parse_expression(PRECEDENCE_LOWEST)?;
-        // if !matches!(
-        //     table,
-        //     ast::Expression::Literal(_) | ast::Expression::CompoundLiteral(_)
-        // ) {
-        //     self.expected("expected table name", &self.current_token)?;
-        // }
-
-        // // if this true then we have a function call
-        // let mut function_params = None;
-        // if self.peek_token_is(Kind::LeftParen) {
-        //     self.next_token();
-        //     let params = self.parse_expression(PRECEDENCE_LOWEST)?;
-        //     if !matches!(params, ast::Expression::ExpressionList(_)) {
-        //         self.expected("expected function parameters", &self.current_token)?;
-        //     }
-        //     function_params = Some(params);
-        // }
 
         // check if we have an alias
         let is_as;
@@ -405,6 +390,17 @@ impl<'a> Parser<'a> {
                 is_as,
                 alias,
             });
+        } else if matches!(table, ast::Expression::Subquery(_)) {
+            if let Some(alias) = alias {
+                return Ok(ast::TableSource::Derived {
+                    query: table,
+                    is_as,
+                    alias,
+                });
+            } else {
+                self.expected("expected table alias for subquery", &self.current_token)?;
+                unreachable!();
+            };
         } else {
             self.expected("expected table name or function", &self.current_token)?;
             unreachable!();
@@ -1180,13 +1176,20 @@ impl<'a> Parser<'a> {
                     self.next_token();
 
                     let statement = self.parse_select_statement()?;
-                    let expression = ast::Expression::Subquery(Box::new(statement));
+                    match statement {
+                        ast::Statement::Select(query) => {
+                            let expression = ast::Expression::Subquery(query);
 
-                    // check if we have a closing parenthesis
-                    self.expect_kind(Kind::RightParen, &self.peek_token)?;
-                    self.next_token();
+                            // check if we have a closing parenthesis
+                            self.expect_kind(Kind::RightParen, &self.peek_token)?;
+                            self.next_token();
 
-                    return Ok(expression);
+                            return Ok(expression);
+                        }
+                        ast::Statement::CTE { .. } => {
+                            Err(self.expected_err("Subquery", &self.current_token))
+                        }
+                    }
                 }
                 // if the first token is an literal/identifier, we need to parse an
                 // expression list
@@ -1813,7 +1816,7 @@ mod tests {
                         Literal::new_string("name"),
                     ))),
                     ast::SelectItem::Unnamed(ast::Expression::Subquery(Box::new(
-                        ast::Statement::Select(Box::new(ast::SelectStatement {
+                        ast::SelectStatement {
                             distinct: false,
                             top: None,
                             columns: vec![ast::SelectItem::Wildcard],
@@ -1835,7 +1838,7 @@ mod tests {
                             order_by: vec![],
                             offset: None,
                             fetch: None,
-                        })),
+                        },
                     ))),
                 ],
                 into_table: None,

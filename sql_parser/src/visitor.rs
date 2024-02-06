@@ -238,8 +238,8 @@ pub trait Visitor {
         }
         self.visit_statement(&cte.query);
     }
-    fn visit_subquery(&mut self, query: &Statement) {
-        self.visit_statement(&query);
+    fn visit_subquery(&mut self, query: &SelectStatement) {
+        self.visit_select_query(&query);
     }
 }
 

@@ -219,6 +219,18 @@ impl Visitor for Formatter {
                     self.formatted_query.push_str(alias);
                 }
             }
+            sql_parser::ast::TableSource::Derived {
+                query,
+                is_as,
+                alias,
+            } => {
+                self.visit_expression(query);
+                self.formatted_query.push_str(" ");
+                if *is_as {
+                    self.print_keyword("AS ");
+                }
+                self.formatted_query.push_str(alias);
+            }
             _ => unimplemented!(),
         }
     }
@@ -625,14 +637,14 @@ impl Visitor for Formatter {
         self.print_new_line();
     }
 
-    fn visit_subquery(&mut self, query: &sql_parser::ast::Statement) {
+    fn visit_subquery(&mut self, query: &sql_parser::ast::SelectStatement) {
         self.formatted_query.push_str("(");
 
         self.increase_indent();
         self.increase_indent();
         self.print_new_line();
 
-        self.visit_statement(&query);
+        self.visit_select_query(&query);
 
         self.decrease_indent();
         self.print_new_line();
