@@ -36,7 +36,10 @@ fn main() {
         use_tab: cli.use_tab,
     };
     let mut formatter = formatter::Formatter::new(formatter_settings);
-    formatter.format(&cli.input);
+    if let Err(e) = formatter.format(&cli.input) {
+        eprintln!("Error: {}", e);
+        return;
+    }
 
     println!("{}", formatter.formatted_query());
 }
