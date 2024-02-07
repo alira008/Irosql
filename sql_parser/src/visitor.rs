@@ -2,17 +2,13 @@ use crate::{
     ast::{
         CommonTableExpression, Expression, FetchArg, IntoArg, Join, JoinType, NextOrFirst,
         OffsetArg, OrderByArg, OverClause, Query, RowOrRows, RowsOrRange, SelectItem,
-        SelectStatement, Statement, TableArg, TableSource, TopArg, WindowFrame, WindowFrameBound, DataType,
+        SelectStatement, Statement, TableArg, TableSource, TopArg, WindowFrame, WindowFrameBound, DataType, LocalVariable,
     },
     token::Token,
 };
 
 pub trait Visitor {
-    fn visit_query(&mut self, query: &Query) {
-        for statement in &query.statements {
-            self.visit_statement(&statement)
-        }
-    }
+    fn visit_query(&mut self, query: &Query);
     fn visit_expression(&mut self, expression: &Expression) {
         walk_expression(self, expression);
     }
@@ -236,13 +232,14 @@ pub trait Visitor {
         for column in &cte.columns {
             self.visit_expression(column);
         }
-        self.visit_statement(&cte.query);
+        self.visit_select_query(&cte.query);
     }
     fn visit_subquery(&mut self, query: &SelectStatement) {
         self.visit_select_query(&query);
     }
     fn visit_cast(&mut self, expression: &Expression);
     fn visit_data_type(&mut self, data_type: &DataType);
+    fn visit_declare_statement(&mut self, statement: &[LocalVariable]);
 }
 
 pub fn walk_query<V: Visitor + ?Sized>(visitor: &mut V, query: &Query) {
@@ -301,6 +298,7 @@ pub fn walk_statement<V: Visitor + ?Sized>(visitor: &mut V, statement: &Statemen
     match statement {
         Statement::Select(select_query) => visitor.visit_select_query(select_query),
         Statement::CTE { .. } => visitor.visit_cte_statement(statement),
+        Statement::Declare (vars) => visitor.visit_declare_statement(vars),
     }
 }
 

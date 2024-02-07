@@ -5,7 +5,6 @@ pub mod token;
 pub mod visitor;
 
 use keywords::Keyword;
-use std::convert::TryInto;
 use token::{Kind, Literal, Token};
 
 #[derive(Debug, Clone)]
@@ -67,8 +66,11 @@ impl<'a> Parser<'a> {
     fn parse_statement(&mut self) -> Result<ast::Statement, String> {
         match self.current_token.kind() {
             Kind::Keyword(keyword) => match keyword {
-                Keyword::SELECT => return self.parse_select_statement(),
+                Keyword::SELECT => {
+                    return Ok(ast::Statement::Select(self.parse_select_statement()?))
+                }
                 Keyword::WITH => return self.parse_cte_statement(),
+                Keyword::DECLARE => return self.parse_declare_statement(),
                 _ => {
                     return Err(
                         self.expected_err("Expected Select or CTE keyword", &self.current_token)
@@ -77,6 +79,61 @@ impl<'a> Parser<'a> {
             },
             _ => return Err(self.expected_err("Expected MSQL keyword", &self.current_token)),
         }
+    }
+
+    fn parse_declare_statement(&mut self) -> Result<ast::Statement, String> {
+        self.expect_kind(Kind::Keyword(Keyword::DECLARE), &self.current_token)?;
+        self.expect_kind(Kind::LocalVariable, &self.peek_token)?;
+
+        let mut variables = vec![];
+        while !self.peek_token_is(Kind::Keyword(Keyword::SELECT))
+            && !self.peek_token_is(Kind::Keyword(Keyword::WITH))
+            && !self.peek_token_is(Kind::Eof)
+        {
+            // go to name of the variable or the comma
+            self.next_token();
+
+            if variables.len() > 0 {
+                // expect a COMMA before the next GROUP BY expression
+                self.expect_kind(Kind::Comma, &self.current_token)?;
+
+                // consume the COMMA
+                self.next_token();
+            }
+
+            let var_name = self.current_token.clone();
+            let mut is_as = false;
+            if self.peek_token_is(Kind::Keyword(Keyword::AS)) {
+                self.next_token();
+                is_as = true;
+            }
+
+            // parse the data type
+            let var_type = self.parse_data_type()?;
+
+            // check if there is an equal sign
+            // if there is, then we need to parse the default value
+            let mut default_value = None;
+            if self.peek_token_is(Kind::Equal) {
+                self.next_token();
+                self.next_token();
+
+                let expression = self.parse_expression(PRECEDENCE_LOWEST)?;
+                if !matches!(expression, ast::Expression::Literal(_)){
+                    return Err(self.expected_err("literal value", &self.current_token));
+                }
+                default_value = Some(expression);
+            }
+
+            variables.push(ast::LocalVariable {
+                name: var_name,
+                data_type: var_type,
+                is_as,
+                value: default_value,
+            });
+        }
+
+        Ok(ast::Statement::Declare(variables))
     }
 
     fn parse_cte_statement(&mut self) -> Result<ast::Statement, String> {
@@ -118,20 +175,15 @@ impl<'a> Parser<'a> {
             self.expect_kind(Kind::Keyword(Keyword::SELECT), &self.peek_token)?;
             self.next_token();
             let select_statement = self.parse_select_statement()?;
-            match &select_statement {
-                ast::Statement::Select(q) => {
-                    if q.order_by.len() > 0 && q.top.is_none() {
-                        return Err(
-                            "Order by is not allowed in cte query unless TOP clause is specified"
-                                .to_string(),
-                        );
-                    } else {
-                        if q.into_table.is_some() {
-                            return Err("INTO is not allowed in a cte query".to_string());
-                        }
-                    }
+            if select_statement.order_by.len() > 0 && select_statement.top.is_none() {
+                return Err(
+                    "Order by is not allowed in cte query unless TOP clause is specified"
+                        .to_string(),
+                );
+            } else {
+                if select_statement.into_table.is_some() {
+                    return Err("INTO is not allowed in a cte query".to_string());
                 }
-                ast::Statement::CTE { .. } => unimplemented!(),
             }
 
             self.expect_kind(Kind::RightParen, &self.peek_token)?;
@@ -153,16 +205,14 @@ impl<'a> Parser<'a> {
         self.expect_kind(Kind::Keyword(Keyword::SELECT), &self.peek_token)?;
         self.next_token();
 
-        match self.parse_select_statement()? {
-            ast::Statement::Select(query) => Ok(ast::Statement::CTE {
-                ctes,
-                statement: query,
-            }),
-            ast::Statement::CTE { .. } => Err("SELECT statement must be after CTE".to_string()),
-        }
+        let select_statement = self.parse_select_statement()?;
+        Ok(ast::Statement::CTE {
+            ctes,
+            statement: select_statement,
+        })
     }
 
-    fn parse_select_statement(&mut self) -> Result<ast::Statement, String> {
+    fn parse_select_statement(&mut self) -> Result<ast::SelectStatement, String> {
         let mut statement = ast::SelectStatement::new();
 
         // check if the next token is a DISTINCT keyword
@@ -229,7 +279,7 @@ impl<'a> Parser<'a> {
                 self.next_token();
 
                 // check if the next token is an identifier
-                self.expect_kind(Kind::Ident, &self.peek_token)?;
+                self.expect_many_kind(&[Kind::Ident, Kind::LocalVariable], &self.peek_token)?;
                 self.next_token();
 
                 file_group = Some(ast::Expression::Literal(self.current_token.clone()));
@@ -350,12 +400,15 @@ impl<'a> Parser<'a> {
             }
         }
 
-        Ok(ast::Statement::Select(Box::new(statement)))
+        Ok(statement)
     }
 
     fn parse_table_source(&mut self) -> Result<ast::TableSource, String> {
         // check if the next token is an identifier
-        if !matches!(self.peek_token.kind(), Kind::Ident | Kind::LeftParen) {
+        if !matches!(
+            self.peek_token.kind(),
+            Kind::Ident | Kind::LocalVariable | Kind::LeftParen
+        ) {
             return Err(self.expected_err(
                 "Identifier or left parenthesis for subquery",
                 &self.peek_token,
@@ -807,6 +860,7 @@ impl<'a> Parser<'a> {
         while !self.peek_token_is(Kind::RightParen) {
             if !self.peek_token_is(Kind::Number)
                 && !self.peek_token_is(Kind::Ident)
+                && !self.peek_token_is(Kind::LocalVariable)
                 && !self.peek_token_is(Kind::Comma)
             {
                 self.expected("STRING LITERAL or NUMBER or Identifier", &self.peek_token)?;
@@ -820,6 +874,7 @@ impl<'a> Parser<'a> {
                 // consume the COMMA
                 if !self.peek_token_is(Kind::Number)
                     && !self.peek_token_is(Kind::Ident)
+                    && !self.peek_token_is(Kind::LocalVariable)
                     && !self.peek_token_is(Kind::Comma)
                 {
                     self.expected("STRING LITERAL or NUMBER or Identifier", &self.peek_token)?;
@@ -1254,7 +1309,7 @@ impl<'a> Parser<'a> {
 
     fn parse_prefix_expression(&mut self) -> Result<ast::Expression, String> {
         match self.current_token.kind() {
-            Kind::Ident | Kind::Number | Kind::Asterisk => {
+            Kind::Ident | Kind::LocalVariable | Kind::Number | Kind::Asterisk => {
                 // check if the next token is a dot
                 if self.peek_token_is(Kind::Period) {
                     let mut idents = vec![self.current_token.clone()];
@@ -1410,24 +1465,19 @@ impl<'a> Parser<'a> {
                     self.next_token();
 
                     let statement = self.parse_select_statement()?;
-                    match statement {
-                        ast::Statement::Select(query) => {
-                            let expression = ast::Expression::Subquery(query);
+                    let expression = ast::Expression::Subquery(Box::new(statement));
+                    // check if we have a closing parenthesis
+                    self.expect_kind(Kind::RightParen, &self.peek_token)?;
+                    self.next_token();
 
-                            // check if we have a closing parenthesis
-                            self.expect_kind(Kind::RightParen, &self.peek_token)?;
-                            self.next_token();
-
-                            return Ok(expression);
-                        }
-                        ast::Statement::CTE { .. } => {
-                            Err(self.expected_err("Subquery", &self.current_token))
-                        }
-                    }
+                    return Ok(expression);
                 }
                 // if the first token is an literal/identifier, we need to parse an
                 // expression list
-                else if self.peek_token_is(Kind::Ident) || self.peek_token_is(Kind::Number) {
+                else if self.peek_token_is(Kind::Ident)
+                    || self.peek_token_is(Kind::LocalVariable)
+                    || self.peek_token_is(Kind::Number)
+                {
                     let expression_list = self.parse_expression_list()?;
                     // check if we have a closing parenthesis
                     self.expect_kind(Kind::RightParen, &self.peek_token)?;
@@ -1485,8 +1535,6 @@ impl<'a> Parser<'a> {
     }
 
     fn parse_infix_expression(&mut self, left: ast::Expression) -> Result<ast::Expression, String> {
-        // | Kind::Keyword(Keyword::IN)
-        // | Kind::Keyword(Keyword::LIKE)
         match self.current_token.kind() {
             Kind::Plus
             | Kind::Minus
@@ -1684,7 +1732,7 @@ mod tests {
         }
 
         let expected_query = ast::Query {
-            statements: vec![ast::Statement::Select(Box::new(ast::SelectStatement {
+            statements: vec![ast::Statement::Select(ast::SelectStatement {
                 distinct: false,
                 top: None,
                 columns: vec![ast::SelectItem::Unnamed(ast::Expression::Literal(
@@ -1746,7 +1794,7 @@ mod tests {
                     first: ast::NextOrFirst::Next,
                     row: ast::RowOrRows::Rows,
                 }),
-            }))],
+            })],
         };
 
         assert_eq!(expected_query, query);
@@ -1760,7 +1808,7 @@ mod tests {
         let query = parser.parse();
 
         let expected_query = ast::Query {
-            statements: vec![ast::Statement::Select(Box::new(ast::SelectStatement {
+            statements: vec![ast::Statement::Select(ast::SelectStatement {
                 distinct: true,
                 top: Some(ast::TopArg {
                     with_ties: false,
@@ -1808,7 +1856,7 @@ mod tests {
                 order_by: vec![],
                 offset: None,
                 fetch: None,
-            }))],
+            })],
         };
 
         assert_eq!(expected_query, query);
@@ -1822,7 +1870,7 @@ mod tests {
         let query = parser.parse();
 
         let expected_query = ast::Query {
-            statements: vec![ast::Statement::Select(Box::new(ast::SelectStatement {
+            statements: vec![ast::Statement::Select(ast::SelectStatement {
                 distinct: false,
                 top: None,
                 columns: vec![
@@ -1875,7 +1923,7 @@ mod tests {
                 order_by: vec![],
                 offset: None,
                 fetch: None,
-            }))],
+            })],
         };
 
         assert_eq!(expected_query, query);
@@ -1889,7 +1937,7 @@ mod tests {
         let query = parser.parse();
 
         let expected_query = ast::Query {
-            statements: vec![ast::Statement::Select(Box::new(ast::SelectStatement {
+            statements: vec![ast::Statement::Select(ast::SelectStatement {
                 distinct: false,
                 top: None,
                 columns: vec![
@@ -1970,7 +2018,7 @@ mod tests {
                 order_by: vec![],
                 offset: None,
                 fetch: None,
-            }))],
+            })],
         };
 
         assert_eq!(expected_query, query);
@@ -1984,7 +2032,7 @@ mod tests {
         let query = parser.parse();
 
         let expected_query = ast::Query {
-            statements: vec![ast::Statement::Select(Box::new(ast::SelectStatement {
+            statements: vec![ast::Statement::Select(ast::SelectStatement {
                 distinct: false,
                 top: None,
                 columns: vec![
@@ -2028,7 +2076,7 @@ mod tests {
                 order_by: vec![],
                 offset: None,
                 fetch: None,
-            }))],
+            })],
         };
 
         assert_eq!(expected_query, query);
@@ -2042,7 +2090,7 @@ mod tests {
         let query = parser.parse();
 
         let expected_query = ast::Query {
-            statements: vec![ast::Statement::Select(Box::new(ast::SelectStatement {
+            statements: vec![ast::Statement::Select(ast::SelectStatement {
                 distinct: false,
                 top: None,
                 columns: vec![
@@ -2118,7 +2166,7 @@ mod tests {
                 order_by: vec![],
                 offset: None,
                 fetch: None,
-            }))],
+            })],
         };
 
         assert_eq!(expected_query, query);
@@ -2132,7 +2180,7 @@ mod tests {
         let query = parser.parse();
 
         let expected_query = ast::Query {
-            statements: vec![ast::Statement::Select(Box::new(ast::SelectStatement {
+            statements: vec![ast::Statement::Select(ast::SelectStatement {
                 distinct: false,
                 top: None,
                 columns: vec![ast::SelectItem::Unnamed(ast::Expression::Literal(
@@ -2180,7 +2228,7 @@ mod tests {
                 order_by: vec![],
                 offset: None,
                 fetch: None,
-            }))],
+            })],
         };
 
         assert_eq!(expected_query, query);

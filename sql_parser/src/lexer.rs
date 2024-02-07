@@ -188,8 +188,7 @@ impl<'a> Lexer<'a> {
                     self.current_location,
                 ),
                 '\'' => {
-                    // Read the identifier until the next non-alphabetic character
-                    // We should be reading until the next '\''
+                    // Read the identifier until the next '\''
                     if let Some(ident) = self.read_quoted_ident('\'') {
                         Token::new(
                             Kind::Ident,
@@ -218,6 +217,15 @@ impl<'a> Lexer<'a> {
                     self.current_location,
                 ),
                 '~' => Token::new(Kind::Tilde, Literal::new_string("~"), self.current_location),
+                '@' => {
+                    // read the identifier until the next non-identifier
+                    let local_variable = self.read_local_variable();
+                    Token::new(
+                        Kind::LocalVariable,
+                        Literal::new_string(&local_variable),
+                        self.current_location,
+                    )
+                }
                 _ => {
                     if ch.is_alphabetic() || ch == '_' {
                         // Read the identifier until the next non-alphabetic character
@@ -273,6 +281,18 @@ impl<'a> Lexer<'a> {
         while self.ch.is_some_and(|ch| ch.is_whitespace()) {
             self.read_char();
         }
+    }
+
+    fn read_local_variable(&mut self) -> String {
+        let start = self.current_position;
+        while self
+            .chars
+            .peek()
+            .is_some_and(|ch| ch.is_alphanumeric() || ch == &'_' || ch == &'@')
+        {
+            self.read_char();
+        }
+        self.input[start..self.current_position + 1].to_string()
     }
 
     fn read_ident(&mut self) -> String {
@@ -357,12 +377,20 @@ mod tests {
         }
         let expected_tokens = vec![
             Token::wrap(Kind::Keyword(Keyword::DESC), Literal::new_string("DESC")),
-            Token::wrap(Kind::Keyword(Keyword::CURRENT), Literal::new_string("CURRENT")),
+            Token::wrap(
+                Kind::Keyword(Keyword::CURRENT),
+                Literal::new_string("CURRENT"),
+            ),
             Token::wrap(Kind::Comma, Literal::new_string(",")),
-            Token::wrap(Kind::Keyword(Keyword::PRECEDING), Literal::new_string("PRECEDING")),
-            Token::wrap(Kind::Keyword(Keyword::FOLLOWING), Literal::new_string("FOLLOWING")),
+            Token::wrap(
+                Kind::Keyword(Keyword::PRECEDING),
+                Literal::new_string("PRECEDING"),
+            ),
+            Token::wrap(
+                Kind::Keyword(Keyword::FOLLOWING),
+                Literal::new_string("FOLLOWING"),
+            ),
         ];
-        dbg!(&tokens);
 
         assert_eq!(expected_tokens, tokens);
     }

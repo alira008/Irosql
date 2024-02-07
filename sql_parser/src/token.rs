@@ -118,6 +118,7 @@ impl Literal {
 #[derive(Debug, Copy, Clone, PartialEq)]
 pub enum Kind {
     Ident,
+    LocalVariable,
     Keyword(keywords::Keyword),
     Number,
     Comma,
@@ -152,6 +153,7 @@ impl fmt::Display for Kind {
         
         match self {
             Kind::Ident => f.write_str("IDENTIFIER"),
+            Kind::LocalVariable => f.write_str("LOCAL_VARIABLE"),
             Kind::Keyword(k) => write!(f, "KEYWORD({:?})", k),
             Kind::Number => f.write_str("NUMBER"),
             Kind::Comma => f.write_str(","),

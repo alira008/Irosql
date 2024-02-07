@@ -31,6 +31,71 @@ where
 }
 
 #[derive(Debug, PartialEq, Clone)]
+pub struct CommonTableExpression {
+    pub name: Expression,
+    pub columns: Vec<Expression>,
+    pub query: SelectStatement,
+}
+
+impl fmt::Display for CommonTableExpression {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}", self.name)?;
+        if !self.columns.is_empty() {
+            write!(f, "(")?;
+            display_list_comma_separated(&self.columns, f)?;
+            write!(f, ")")?;
+        }
+        write!(f, " AS ({})", self.query)
+    }
+}
+
+#[derive(Debug, PartialEq, Clone)]
+pub enum Statement {
+    Select(SelectStatement),
+    CTE {
+        ctes: Vec<CommonTableExpression>,
+        statement: SelectStatement,
+    },
+    Declare(Vec<LocalVariable>),
+}
+
+impl fmt::Display for Statement {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match &self {
+            Statement::Select(select) => write!(f, "{}", select),
+            Statement::CTE { ctes, statement } => {
+                write!(f, "WITH ")?;
+                display_list_comma_separated(ctes, f)?;
+                write!(f, " {}", statement)
+            }
+            Statement::Declare(local_variables) => {
+                write!(f, "DECLARE ")?;
+                display_list_comma_separated(local_variables, f)
+            }
+        }
+    }
+}
+
+#[derive(Debug, PartialEq, Clone)]
+pub struct LocalVariable {
+    pub name: Token,
+    pub is_as: bool,
+    pub data_type: DataType,
+    pub value: Option<Expression>,
+}
+
+impl fmt::Display for LocalVariable {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}", self.name)?;
+        if self.is_as {
+            write!(f, " AS {}", self.data_type)
+        } else {
+            write!(f, " {}", self.data_type)
+        }
+    }
+}
+
+#[derive(Debug, PartialEq, Clone)]
 pub struct Query {
     pub statements: Vec<Statement>,
 }
@@ -260,47 +325,6 @@ impl fmt::Display for OverClause {
             write!(f, "{}", window_frame)?;
         }
         Ok(())
-    }
-}
-
-#[derive(Debug, PartialEq, Clone)]
-pub struct CommonTableExpression {
-    pub name: Expression,
-    pub columns: Vec<Expression>,
-    pub query: Statement,
-}
-
-impl fmt::Display for CommonTableExpression {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{}", self.name)?;
-        if !self.columns.is_empty() {
-            write!(f, "(")?;
-            display_list_comma_separated(&self.columns, f)?;
-            write!(f, ")")?;
-        }
-        write!(f, " AS ({})", self.query)
-    }
-}
-
-#[derive(Debug, PartialEq, Clone)]
-pub enum Statement {
-    Select(Box<SelectStatement>),
-    CTE {
-        ctes: Vec<CommonTableExpression>,
-        statement: Box<SelectStatement>,
-    },
-}
-
-impl fmt::Display for Statement {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match &self {
-            Statement::Select(select) => write!(f, "{}", select),
-            Statement::CTE { ctes, statement } => {
-                write!(f, "WITH ")?;
-                display_list_comma_separated(ctes, f)?;
-                write!(f, " {}", statement)
-            }
-        }
     }
 }
 

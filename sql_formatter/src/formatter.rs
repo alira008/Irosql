@@ -633,7 +633,7 @@ impl Visitor for Formatter {
         self.increase_indent();
         self.print_indent();
 
-        self.visit_statement(&cte.query);
+        self.visit_select_query(&cte.query);
 
         self.decrease_indent();
         self.print_new_line();
@@ -718,7 +718,7 @@ impl Visitor for Formatter {
                     }
                     self.formatted_query.push_str(")");
                 }
-            },
+            }
             sql_parser::ast::DataType::Varchar(size) => {
                 self.print_keyword("VARCHAR");
                 if let Some(size) = size {
@@ -727,6 +727,35 @@ impl Visitor for Formatter {
                     self.formatted_query.push_str(")");
                 }
             }
+        }
+    }
+
+    fn visit_declare_statement(&mut self, local_variables: &[sql_parser::ast::LocalVariable]) {
+        self.print_keyword("DECLARE ");
+        for (i, local_variable) in local_variables.iter().enumerate() {
+            if i > 0 {
+                self.print_select_column_comma();
+            }
+            self.visit_token(&local_variable.name);
+            self.formatted_query.push_str(" ");
+            if local_variable.is_as {
+                self.print_keyword("AS ")
+            }
+            self.visit_data_type(&local_variable.data_type);
+            if let Some(value) = &local_variable.value {
+                self.formatted_query.push_str(" = ");
+                self.visit_expression(value);
+            }
+        }
+    }
+
+    fn visit_query(&mut self, query: &sql_parser::ast::Query) {
+        for (i, statement) in query.statements.iter().enumerate() {
+            if i > 0 {
+                self.print_new_line();
+                self.print_new_line();
+            }
+            self.visit_statement(statement);
         }
     }
 }
