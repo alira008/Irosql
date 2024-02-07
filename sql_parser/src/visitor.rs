@@ -240,6 +240,7 @@ pub trait Visitor {
     fn visit_cast(&mut self, expression: &Expression);
     fn visit_data_type(&mut self, data_type: &DataType);
     fn visit_declare_statement(&mut self, statement: &[LocalVariable]);
+    fn visit_set_local_variable_statement(&mut self, statement: &Statement);
 }
 
 pub fn walk_query<V: Visitor + ?Sized>(visitor: &mut V, query: &Query) {
@@ -299,6 +300,7 @@ pub fn walk_statement<V: Visitor + ?Sized>(visitor: &mut V, statement: &Statemen
         Statement::Select(select_query) => visitor.visit_select_query(select_query),
         Statement::CTE { .. } => visitor.visit_cte_statement(statement),
         Statement::Declare (vars) => visitor.visit_declare_statement(vars),
+        Statement::SetLocalVariable {..} => visitor.visit_set_local_variable_statement(statement),
     }
 }
 

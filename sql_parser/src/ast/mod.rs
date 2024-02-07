@@ -57,6 +57,10 @@ pub enum Statement {
         statement: SelectStatement,
     },
     Declare(Vec<LocalVariable>),
+    SetLocalVariable {
+        name: Token,
+        value: Expression,
+    },
 }
 
 impl fmt::Display for Statement {
@@ -72,6 +76,7 @@ impl fmt::Display for Statement {
                 write!(f, "DECLARE ")?;
                 display_list_comma_separated(local_variables, f)
             }
+            Statement::SetLocalVariable { name, value } => write!(f, "SET {} = {}", name, value),
         }
     }
 }

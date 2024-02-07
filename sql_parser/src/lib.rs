@@ -71,6 +71,7 @@ impl<'a> Parser<'a> {
                 }
                 Keyword::WITH => return self.parse_cte_statement(),
                 Keyword::DECLARE => return self.parse_declare_statement(),
+                Keyword::SET => return self.parse_set_local_variable_statement(),
                 _ => {
                     return Err(
                         self.expected_err("Expected Select or CTE keyword", &self.current_token)
@@ -88,6 +89,7 @@ impl<'a> Parser<'a> {
         let mut variables = vec![];
         while !self.peek_token_is(Kind::Keyword(Keyword::SELECT))
             && !self.peek_token_is(Kind::Keyword(Keyword::WITH))
+            && !self.peek_token_is(Kind::Keyword(Keyword::SET))
             && !self.peek_token_is(Kind::Eof)
         {
             // go to name of the variable or the comma
@@ -118,8 +120,12 @@ impl<'a> Parser<'a> {
                 self.next_token();
                 self.next_token();
 
+                self.expect_many_kind(
+                    &[Kind::Number, Kind::Ident, Kind::LocalVariable],
+                    &self.current_token,
+                )?;
                 let expression = self.parse_expression(PRECEDENCE_LOWEST)?;
-                if !matches!(expression, ast::Expression::Literal(_)){
+                if !matches!(expression, ast::Expression::Literal(_)) {
                     return Err(self.expected_err("literal value", &self.current_token));
                 }
                 default_value = Some(expression);
@@ -134,6 +140,37 @@ impl<'a> Parser<'a> {
         }
 
         Ok(ast::Statement::Declare(variables))
+    }
+
+    fn parse_set_local_variable_statement(&mut self) -> Result<ast::Statement, String> {
+        self.expect_kind(Kind::Keyword(Keyword::SET), &self.current_token)?;
+        self.expect_kind(Kind::LocalVariable, &self.peek_token)?;
+
+        // go to name of the variable
+        self.next_token();
+
+        let var_name = self.current_token.clone();
+
+        // check if there is an equal sign
+        self.expect_kind(Kind::Equal, &self.peek_token)?;
+        self.next_token();
+
+        // skip equals
+        self.next_token();
+        self.expect_many_kind(
+            &[Kind::Number, Kind::Ident, Kind::LocalVariable],
+            &self.current_token,
+        )?;
+
+        let value = self.parse_expression(PRECEDENCE_LOWEST)?;
+        if !matches!(value, ast::Expression::Literal(_)) {
+            return Err(self.expected_err("literal value", &self.current_token));
+        }
+
+        Ok(ast::Statement::SetLocalVariable {
+            name: var_name,
+            value,
+        })
     }
 
     fn parse_cte_statement(&mut self) -> Result<ast::Statement, String> {
@@ -302,7 +339,8 @@ impl<'a> Parser<'a> {
                 ast::SelectItem::Unnamed(expression)
                 | ast::SelectItem::WithAlias { expression, .. } => match expression {
                     ast::Expression::Literal(token) => {
-                        matches!(token.kind(), Kind::Number)
+                        matches!(token.kind(), Kind::Number | Kind::LocalVariable)
+                            | matches!(token.literal(), Literal::QuotedString { .. })
                     }
                     ast::Expression::Subquery(_) => true,
                     _ => false,
@@ -562,7 +600,13 @@ impl<'a> Parser<'a> {
         // check if the next token is an identifier
         // return an error if the next token is not an identifier or number
         self.expect_many_kind(
-            &[Kind::Ident, Kind::Number, Kind::Asterisk, Kind::LeftParen],
+            &[
+                Kind::Ident,
+                Kind::Number,
+                Kind::Asterisk,
+                Kind::LeftParen,
+                Kind::LocalVariable,
+            ],
             &self.peek_token,
         )?;
 

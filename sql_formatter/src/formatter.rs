@@ -250,8 +250,6 @@ impl Visitor for Formatter {
             for join in table_arg.joins.iter() {
                 self.visit_table_join(join);
             }
-        } else {
-            unreachable!();
         }
     }
 
@@ -756,6 +754,17 @@ impl Visitor for Formatter {
                 self.print_new_line();
             }
             self.visit_statement(statement);
+        }
+    }
+
+    fn visit_set_local_variable_statement(&mut self, statement: &sql_parser::ast::Statement) {
+        if let sql_parser::ast::Statement::SetLocalVariable { name, value } = statement {
+            self.print_keyword("SET ");
+            self.visit_token(name);
+            self.formatted_query.push_str(" = ");
+            self.visit_expression(value);
+        } else {
+            unreachable!()
         }
     }
 }
