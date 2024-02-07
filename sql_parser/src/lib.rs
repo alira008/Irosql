@@ -204,14 +204,13 @@ impl<'a> Parser<'a> {
             // check if there is an equal sign
             // if there is, then we need to parse the default value
             let mut default_value = None;
-            if self.peek_token_is(Kind::Equal) {
-                self.next_token();
-                self.next_token();
-
+            if self.current_token_is(Kind::Equal) {
                 self.expect_many_kind(
                     &[Kind::Number, Kind::Ident, Kind::LocalVariable],
-                    &self.current_token,
+                    &self.peek_token,
                 )?;
+
+                self.next_token();
                 let expression = self.parse_expression(PRECEDENCE_LOWEST)?;
                 if !matches!(expression, ast::Expression::Literal(_)) {
                     return Err(self.expected_err("literal value", &self.current_token));
@@ -1234,6 +1233,7 @@ impl<'a> Parser<'a> {
             Kind::Keyword(Keyword::SMALLINT) => ast::DataType::SmallInt,
             Kind::Keyword(Keyword::BIT) => ast::DataType::Bit,
             Kind::Keyword(Keyword::FLOAT) => {
+                self.next_token();
                 if !self.peek_token_is(Kind::LeftParen) {
                     ast::DataType::Float(None)
                 } else {
@@ -1268,6 +1268,7 @@ impl<'a> Parser<'a> {
             Kind::Keyword(Keyword::DATETIME) => ast::DataType::Datetime,
             Kind::Keyword(Keyword::TIME) => ast::DataType::Time,
             Kind::Keyword(Keyword::DECIMAL) => {
+                self.next_token();
                 if !self.peek_token_is(Kind::LeftParen) {
                     ast::DataType::Decimal(None)
                 } else {
@@ -1330,6 +1331,7 @@ impl<'a> Parser<'a> {
                 }
             }
             Kind::Keyword(Keyword::NUMERIC) => {
+                self.next_token();
                 if !self.peek_token_is(Kind::LeftParen) {
                     ast::DataType::Numeric(None)
                 } else {
@@ -1392,6 +1394,7 @@ impl<'a> Parser<'a> {
                 }
             }
             Kind::Keyword(Keyword::VARCHAR) => {
+                self.next_token();
                 if !self.peek_token_is(Kind::LeftParen) {
                     ast::DataType::Varchar(None)
                 } else {
@@ -1415,7 +1418,7 @@ impl<'a> Parser<'a> {
                         p if p < 0.0 => 0,
                         _ => u32::MAX,
                     };
-                    self.expect_kind(Kind::LeftParen, &self.peek_token)?;
+                    self.expect_kind(Kind::RightParen, &self.peek_token)?;
                     self.next_token();
 
                     ast::DataType::Varchar(Some(size_u32))
