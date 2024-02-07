@@ -2,7 +2,7 @@ use crate::{
     ast::{
         CommonTableExpression, Expression, FetchArg, IntoArg, Join, JoinType, NextOrFirst,
         OffsetArg, OrderByArg, OverClause, Query, RowOrRows, RowsOrRange, SelectItem,
-        SelectStatement, Statement, TableArg, TableSource, TopArg, WindowFrame, WindowFrameBound, DataType, LocalVariable,
+        SelectStatement, Statement, TableArg, TableSource, TopArg, WindowFrame, WindowFrameBound, DataType, LocalVariable, ExecOrExecute, ProcedureParameter,
     },
     token::Token,
 };
@@ -239,8 +239,11 @@ pub trait Visitor {
     }
     fn visit_cast(&mut self, expression: &Expression);
     fn visit_data_type(&mut self, data_type: &DataType);
+    fn visit_exec_or_execute(&mut self, keyword: &ExecOrExecute);
     fn visit_declare_statement(&mut self, statement: &[LocalVariable]);
     fn visit_set_local_variable_statement(&mut self, statement: &Statement);
+    fn visit_execute_statement(&mut self, statement: &Statement);
+    fn visit_exec_parameter(&mut self, parameter: &ProcedureParameter);
 }
 
 pub fn walk_query<V: Visitor + ?Sized>(visitor: &mut V, query: &Query) {
@@ -301,6 +304,7 @@ pub fn walk_statement<V: Visitor + ?Sized>(visitor: &mut V, statement: &Statemen
         Statement::CTE { .. } => visitor.visit_cte_statement(statement),
         Statement::Declare (vars) => visitor.visit_declare_statement(vars),
         Statement::SetLocalVariable {..} => visitor.visit_set_local_variable_statement(statement),
+        Statement::Execute {..} => visitor.visit_execute_statement(statement),
     }
 }
 

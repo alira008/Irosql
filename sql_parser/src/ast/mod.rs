@@ -50,6 +50,36 @@ impl fmt::Display for CommonTableExpression {
 }
 
 #[derive(Debug, PartialEq, Clone)]
+pub enum ExecOrExecute {
+    Exec,
+    Execute,
+}
+
+impl fmt::Display for ExecOrExecute {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match &self {
+            ExecOrExecute::Exec => write!(f, "EXEC"),
+            ExecOrExecute::Execute => write!(f, "EXECUTE"),
+        }
+    }
+}
+
+#[derive(Debug, PartialEq, Clone)]
+pub struct ProcedureParameter {
+    pub name: Option<Token>,
+    pub value: Expression,
+}
+
+impl fmt::Display for ProcedureParameter {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        if let Some(name) = &self.name {
+            write!(f, "{} = ", name)?;
+        }
+        write!(f, "{}", &self.value)
+    }
+}
+
+#[derive(Debug, PartialEq, Clone)]
 pub enum Statement {
     Select(SelectStatement),
     CTE {
@@ -60,6 +90,11 @@ pub enum Statement {
     SetLocalVariable {
         name: Token,
         value: Expression,
+    },
+    Execute {
+        keyword: ExecOrExecute,
+        procedure_name: Expression,
+        parameters: Vec<ProcedureParameter>,
     },
 }
 
@@ -77,6 +112,14 @@ impl fmt::Display for Statement {
                 display_list_comma_separated(local_variables, f)
             }
             Statement::SetLocalVariable { name, value } => write!(f, "SET {} = {}", name, value),
+            Statement::Execute {
+                keyword,
+                procedure_name,
+                parameters,
+            } => {
+                write!(f, "{} {}", keyword, procedure_name)?;
+                display_list_comma_separated(parameters, f)
+            }
         }
     }
 }

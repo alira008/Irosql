@@ -72,6 +72,7 @@ impl<'a> Parser<'a> {
                 Keyword::WITH => return self.parse_cte_statement(),
                 Keyword::DECLARE => return self.parse_declare_statement(),
                 Keyword::SET => return self.parse_set_local_variable_statement(),
+                Keyword::EXEC | Keyword::EXECUTE => return self.parse_execute_statement(),
                 _ => {
                     return Err(
                         self.expected_err("Expected Select or CTE keyword", &self.current_token)
@@ -82,6 +83,90 @@ impl<'a> Parser<'a> {
         }
     }
 
+    fn parse_execute_statement(&mut self) -> Result<ast::Statement, String> {
+        self.expect_many_kind(
+            &[
+                Kind::Keyword(Keyword::EXEC),
+                Kind::Keyword(Keyword::EXECUTE),
+            ],
+            &self.current_token,
+        )?;
+
+        let exec_keyword = match &self.current_token.kind() {
+            Kind::Keyword(Keyword::EXEC) => ast::ExecOrExecute::Exec,
+            Kind::Keyword(Keyword::EXECUTE) => ast::ExecOrExecute::Execute,
+            _ => unreachable!(),
+        };
+
+        self.expect_kind(Kind::Ident, &self.peek_token)?;
+        self.next_token();
+        // get the procedure name
+        let procedure_name = self.parse_expression(PRECEDENCE_LOWEST)?;
+        if !matches!(
+            procedure_name,
+            ast::Expression::CompoundLiteral(_) | ast::Expression::Literal(_)
+        ) {
+            return Err(self.expected_err(
+                "literal or compound literal for procedure name",
+                &self.current_token,
+            ));
+        }
+
+        let mut params = vec![];
+        while !self.peek_token_is(Kind::Keyword(Keyword::SELECT))
+            && !self.peek_token_is(Kind::Keyword(Keyword::WITH))
+            && !self.peek_token_is(Kind::Keyword(Keyword::SET))
+            && !self.peek_token_is(Kind::Keyword(Keyword::DECLARE))
+            && !self.peek_token_is(Kind::Keyword(Keyword::EXECUTE))
+            && !self.peek_token_is(Kind::Keyword(Keyword::EXEC))
+            && !self.peek_token_is(Kind::Eof)
+        {
+            // go to name of the variable or the comma
+            self.next_token();
+
+            if params.len() > 0 {
+                // expect a COMMA before the next expression
+                self.expect_kind(Kind::Comma, &self.current_token)?;
+
+                // consume the COMMA
+                self.next_token();
+            }
+
+            let mut var_name = None;
+            if self.current_token_is(Kind::LocalVariable) {
+                var_name = Some(self.current_token.clone());
+
+                // check if there is an equal sign
+                self.expect_kind(Kind::Equal, &self.peek_token)?;
+                self.next_token();
+
+                // skip equals
+                self.next_token();
+            }
+
+            self.expect_many_kind(
+                &[Kind::Number, Kind::Ident, Kind::LocalVariable],
+                &self.current_token,
+            )?;
+
+            let value = self.parse_expression(PRECEDENCE_LOWEST)?;
+            if !matches!(value, ast::Expression::Literal(_)) {
+                return Err(self.expected_err("literal value", &self.current_token));
+            }
+
+            params.push(ast::ProcedureParameter {
+                name: var_name,
+                value,
+            });
+        }
+
+        Ok(ast::Statement::Execute {
+            keyword: exec_keyword,
+            procedure_name,
+            parameters: params,
+        })
+    }
+
     fn parse_declare_statement(&mut self) -> Result<ast::Statement, String> {
         self.expect_kind(Kind::Keyword(Keyword::DECLARE), &self.current_token)?;
         self.expect_kind(Kind::LocalVariable, &self.peek_token)?;
@@ -90,13 +175,16 @@ impl<'a> Parser<'a> {
         while !self.peek_token_is(Kind::Keyword(Keyword::SELECT))
             && !self.peek_token_is(Kind::Keyword(Keyword::WITH))
             && !self.peek_token_is(Kind::Keyword(Keyword::SET))
+            && !self.peek_token_is(Kind::Keyword(Keyword::DECLARE))
+            && !self.peek_token_is(Kind::Keyword(Keyword::EXECUTE))
+            && !self.peek_token_is(Kind::Keyword(Keyword::EXEC))
             && !self.peek_token_is(Kind::Eof)
         {
             // go to name of the variable or the comma
             self.next_token();
 
             if variables.len() > 0 {
-                // expect a COMMA before the next GROUP BY expression
+                // expect a COMMA before the next expression
                 self.expect_kind(Kind::Comma, &self.current_token)?;
 
                 // consume the COMMA
@@ -614,6 +702,11 @@ impl<'a> Parser<'a> {
         let mut columns: Vec<ast::SelectItem> = vec![];
         while !self.peek_token_is(Kind::Keyword(Keyword::FROM))
             && !self.peek_token_is(Kind::Keyword(Keyword::INTO))
+            && !self.peek_token_is(Kind::Keyword(Keyword::WITH))
+            && !self.peek_token_is(Kind::Keyword(Keyword::EXEC))
+            && !self.peek_token_is(Kind::Keyword(Keyword::EXECUTE))
+            && !self.peek_token_is(Kind::Keyword(Keyword::DECLARE))
+            && !self.peek_token_is(Kind::Keyword(Keyword::SET))
             && !self.peek_token_is(Kind::Eof)
         {
             self.next_token();

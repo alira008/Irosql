@@ -148,7 +148,6 @@ impl Visitor for Formatter {
             }
             self.visit_select_item(column);
         }
-        self.print_new_line();
     }
 
     fn visit_select_item(&mut self, item: &sql_parser::ast::SelectItem) {
@@ -188,6 +187,7 @@ impl Visitor for Formatter {
 
     fn visit_select_into_table(&mut self, arg: &Option<sql_parser::ast::IntoArg>) {
         if let Some(into_arg) = arg {
+            self.print_new_line();
             self.print_keyword("INTO ");
             self.visit_expression(&into_arg.table);
 
@@ -242,6 +242,7 @@ impl Visitor for Formatter {
 
     fn visit_select_table(&mut self, arg: &Option<sql_parser::ast::TableArg>) {
         if let Some(table_arg) = arg {
+            self.print_new_line();
             self.print_keyword("FROM ");
             self.visit_table_source(&table_arg.table);
             if table_arg.joins.len() > 0 {
@@ -766,5 +767,44 @@ impl Visitor for Formatter {
         } else {
             unreachable!()
         }
+    }
+
+    fn visit_execute_statement(&mut self, statement: &sql_parser::ast::Statement) {
+        if let sql_parser::ast::Statement::Execute {
+            keyword,
+            procedure_name,
+            parameters,
+        } = statement
+        {
+            self.visit_exec_or_execute(keyword);
+            self.formatted_query.push_str(" ");
+            self.visit_expression(procedure_name);
+            self.formatted_query.push_str(" ");
+
+            for (i, parameter) in parameters.iter().enumerate() {
+                if i > 0 {
+                    self.print_new_line();
+                    self.print_new_line();
+                }
+                self.visit_exec_parameter(parameter);
+            }
+        } else {
+            unreachable!()
+        }
+    }
+
+    fn visit_exec_or_execute(&mut self, keyword: &sql_parser::ast::ExecOrExecute) {
+        match keyword {
+            sql_parser::ast::ExecOrExecute::Exec => self.print_keyword("EXEC"),
+            sql_parser::ast::ExecOrExecute::Execute => self.print_keyword("EXECUTE"),
+        }
+    }
+
+    fn visit_exec_parameter(&mut self, parameter: &sql_parser::ast::ProcedureParameter) {
+        if let Some(name) = &parameter.name {
+            self.visit_token(name);
+            self.formatted_query.push_str(" = ");
+        }
+        self.visit_expression(&parameter.value);
     }
 }
