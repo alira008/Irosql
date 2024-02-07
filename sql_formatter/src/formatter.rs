@@ -657,4 +657,76 @@ impl Visitor for Formatter {
         self.formatted_query.push_str(")");
         self.decrease_indent();
     }
+
+    fn visit_cast(&mut self, expression: &sql_parser::ast::Expression) {
+        match expression {
+            sql_parser::ast::Expression::Cast {
+                expression,
+                data_type,
+            } => {
+                self.print_keyword("CAST(");
+                self.visit_expression(expression);
+                self.formatted_query.push_str(" AS ");
+                self.visit_data_type(data_type);
+                self.formatted_query.push_str(")");
+            }
+            _ => unreachable!(),
+        }
+    }
+
+    fn visit_data_type(&mut self, data_type: &sql_parser::ast::DataType) {
+        match data_type {
+            sql_parser::ast::DataType::Int => self.print_keyword("INT"),
+            sql_parser::ast::DataType::BigInt => self.print_keyword("BIGINT"),
+            sql_parser::ast::DataType::TinyInt => self.print_keyword("TINYINT"),
+            sql_parser::ast::DataType::SmallInt => self.print_keyword("SMALLINT"),
+            sql_parser::ast::DataType::Bit => self.print_keyword("BIT"),
+            sql_parser::ast::DataType::Float(size) => {
+                self.print_keyword("FLOAT");
+                if let Some(size) = size {
+                    self.formatted_query.push_str("(");
+                    self.formatted_query.push_str(&size.to_string());
+                    self.formatted_query.push_str(")");
+                }
+            }
+            sql_parser::ast::DataType::Real => self.print_keyword("REAL"),
+            sql_parser::ast::DataType::Date => self.print_keyword("DATE"),
+            sql_parser::ast::DataType::Datetime => self.print_keyword("DATETIME"),
+            sql_parser::ast::DataType::Time => self.print_keyword("TIME"),
+            sql_parser::ast::DataType::Decimal(numeric_size) => {
+                self.print_keyword("DECIMAL");
+                if let Some(numeric_size) = numeric_size {
+                    self.formatted_query.push_str("(");
+                    self.formatted_query
+                        .push_str(&numeric_size.precision.to_string());
+                    if let Some(scale) = numeric_size.scale {
+                        self.formatted_query.push_str(", ");
+                        self.formatted_query.push_str(&scale.to_string());
+                    }
+                    self.formatted_query.push_str(")");
+                }
+            }
+            sql_parser::ast::DataType::Numeric(numeric_size) => {
+                self.print_keyword("NUMERIC");
+                if let Some(numeric_size) = numeric_size {
+                    self.formatted_query.push_str("(");
+                    self.formatted_query
+                        .push_str(&numeric_size.precision.to_string());
+                    if let Some(scale) = numeric_size.scale {
+                        self.formatted_query.push_str(", ");
+                        self.formatted_query.push_str(&scale.to_string());
+                    }
+                    self.formatted_query.push_str(")");
+                }
+            },
+            sql_parser::ast::DataType::Varchar(size) => {
+                self.print_keyword("VARCHAR");
+                if let Some(size) = size {
+                    self.formatted_query.push_str("(");
+                    self.formatted_query.push_str(&size.to_string());
+                    self.formatted_query.push_str(")");
+                }
+            }
+        }
+    }
 }

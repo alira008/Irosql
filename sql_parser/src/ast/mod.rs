@@ -1,6 +1,9 @@
+pub mod data_type;
+use crate::token::Token;
 use core::fmt;
 
-use crate::token::Token;
+pub use data_type::DataType;
+pub use data_type::NumericSize;
 
 fn display_list_comma_separated<T>(list: &[T], f: &mut fmt::Formatter) -> fmt::Result
 where
@@ -100,6 +103,10 @@ pub enum Expression {
         args: Box<Expression>,
         over: Option<Box<OverClause>>,
     },
+    Cast {
+        expression: Box<Expression>,
+        data_type: DataType,
+    },
 }
 
 impl fmt::Display for Expression {
@@ -168,6 +175,10 @@ impl fmt::Display for Expression {
                 }
                 Ok(())
             }
+            Expression::Cast {
+                expression,
+                data_type,
+            } => write!(f, "CAST({} as {})", expression, data_type),
         }
     }
 }
@@ -494,11 +505,7 @@ pub enum TableSource {
 impl fmt::Display for TableSource {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match &self {
-            TableSource::Table {
-                name,
-                is_as,
-                alias,
-            } => match alias {
+            TableSource::Table { name, is_as, alias } => match alias {
                 Some(alias) => {
                     if *is_as {
                         write!(f, "{} AS {}", name, alias)

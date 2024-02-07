@@ -3,7 +3,9 @@ pub mod keywords;
 pub mod lexer;
 pub mod token;
 pub mod visitor;
+
 use keywords::Keyword;
+use std::convert::TryInto;
 use token::{Kind, Literal, Token};
 
 #[derive(Debug, Clone)]
@@ -67,7 +69,11 @@ impl<'a> Parser<'a> {
             Kind::Keyword(keyword) => match keyword {
                 Keyword::SELECT => return self.parse_select_statement(),
                 Keyword::WITH => return self.parse_cte_statement(),
-                _ => return Err(self.expected_err("Expected Select or CTE keyword", &self.current_token)),
+                _ => {
+                    return Err(
+                        self.expected_err("Expected Select or CTE keyword", &self.current_token)
+                    )
+                }
             },
             _ => return Err(self.expected_err("Expected MSQL keyword", &self.current_token)),
         }
@@ -350,7 +356,10 @@ impl<'a> Parser<'a> {
     fn parse_table_source(&mut self) -> Result<ast::TableSource, String> {
         // check if the next token is an identifier
         if !matches!(self.peek_token.kind(), Kind::Ident | Kind::LeftParen) {
-            return Err(self.expected_err("Identifier or left parenthesis for subquery", &self.peek_token));
+            return Err(self.expected_err(
+                "Identifier or left parenthesis for subquery",
+                &self.peek_token,
+            ));
         }
         self.next_token();
 
@@ -1025,6 +1034,208 @@ impl<'a> Parser<'a> {
         });
     }
 
+    fn parse_data_type(&mut self) -> Result<ast::DataType, String> {
+        let data_type = match self.peek_token.kind() {
+            Kind::Keyword(Keyword::INT) => ast::DataType::Int,
+            Kind::Keyword(Keyword::BIGINT) => ast::DataType::BigInt,
+            Kind::Keyword(Keyword::TINYINT) => ast::DataType::TinyInt,
+            Kind::Keyword(Keyword::SMALLINT) => ast::DataType::SmallInt,
+            Kind::Keyword(Keyword::BIT) => ast::DataType::Bit,
+            Kind::Keyword(Keyword::FLOAT) => {
+                if !self.peek_token_is(Kind::LeftParen) {
+                    ast::DataType::Float(None)
+                } else {
+                    // parse size
+                    // skip left parenthesis
+                    self.expect_kind(Kind::LeftParen, &self.peek_token)?;
+                    self.next_token();
+
+                    self.expect_kind(Kind::Number, &self.peek_token)?;
+                    self.next_token();
+                    let size_literal = match self.current_token.kind() {
+                        Kind::Number => self.current_token.literal(),
+                        _ => return Err(self.expected_err("number", &self.current_token)),
+                    };
+                    let size_f64 = match size_literal {
+                        Literal::Number(f) => *f,
+                        _ => return Err(self.expected_err("number", &self.current_token)),
+                    };
+                    let size_u32: u32 = match size_f64 {
+                        p if p >= 0.0 && p <= u32::MAX as f64 => size_f64 as u32,
+                        p if p < 0.0 => 0,
+                        _ => u32::MAX,
+                    };
+                    self.expect_kind(Kind::LeftParen, &self.peek_token)?;
+                    self.next_token();
+
+                    ast::DataType::Float(Some(size_u32))
+                }
+            }
+            Kind::Keyword(Keyword::REAL) => ast::DataType::Real,
+            Kind::Keyword(Keyword::DATE) => ast::DataType::Date,
+            Kind::Keyword(Keyword::DATETIME) => ast::DataType::Datetime,
+            Kind::Keyword(Keyword::TIME) => ast::DataType::Time,
+            Kind::Keyword(Keyword::DECIMAL) => {
+                if !self.peek_token_is(Kind::LeftParen) {
+                    ast::DataType::Decimal(None)
+                } else {
+                    // parse precision and optional scale
+                    // skip left parenthesis
+                    self.expect_kind(Kind::LeftParen, &self.peek_token)?;
+                    self.next_token();
+
+                    self.expect_kind(Kind::Number, &self.peek_token)?;
+                    self.next_token();
+                    let precision_literal = match self.current_token.kind() {
+                        Kind::Number => self.current_token.literal(),
+                        _ => return Err(self.expected_err("number", &self.current_token)),
+                    };
+                    let precision = match precision_literal {
+                        Literal::Number(f) => *f,
+                        _ => return Err(self.expected_err("number", &self.current_token)),
+                    };
+                    let precision_u32: u32 = match precision {
+                        p if p >= 0.0 && p <= u32::MAX as f64 => precision as u32,
+                        p if p < 0.0 => 0,
+                        _ => u32::MAX,
+                    };
+                    // no scale
+                    if self.peek_token_is(Kind::RightParen) {
+                        self.next_token();
+
+                        ast::DataType::Decimal(Some(ast::NumericSize {
+                            precision: precision_u32,
+                            scale: None,
+                        }))
+                    } else {
+                        // parse scale
+                        self.expect_kind(Kind::Comma, &self.peek_token)?;
+                        self.next_token();
+
+                        // skip comma
+                        self.next_token();
+                        let scale_literal = match self.current_token.kind() {
+                            Kind::Number => self.current_token.literal(),
+                            _ => return Err(self.expected_err("number", &self.current_token)),
+                        };
+                        let scale_f64 = match scale_literal {
+                            Literal::Number(f) => *f,
+                            _ => return Err(self.expected_err("number", &self.current_token)),
+                        };
+                        let scale_u32: u32 = match scale_f64 {
+                            p if p >= 0.0 && p <= u32::MAX as f64 => precision as u32,
+                            p if p < 0.0 => 0,
+                            _ => u32::MAX,
+                        };
+                        self.expect_kind(Kind::RightParen, &self.peek_token)?;
+                        self.next_token();
+
+                        ast::DataType::Decimal(Some(ast::NumericSize {
+                            precision: precision_u32,
+                            scale: Some(scale_u32),
+                        }))
+                    }
+                }
+            }
+            Kind::Keyword(Keyword::NUMERIC) => {
+                if !self.peek_token_is(Kind::LeftParen) {
+                    ast::DataType::Numeric(None)
+                } else {
+                    // parse precision and optional scale
+                    // skip left parenthesis
+                    self.expect_kind(Kind::LeftParen, &self.peek_token)?;
+                    self.next_token();
+
+                    self.expect_kind(Kind::Number, &self.peek_token)?;
+                    self.next_token();
+                    let precision_literal = match self.current_token.kind() {
+                        Kind::Number => self.current_token.literal(),
+                        _ => return Err(self.expected_err("number", &self.current_token)),
+                    };
+                    let precision = match precision_literal {
+                        Literal::Number(f) => *f,
+                        _ => return Err(self.expected_err("number", &self.current_token)),
+                    };
+                    let precision_u32: u32 = match precision {
+                        p if p >= 0.0 && p <= u32::MAX as f64 => precision as u32,
+                        p if p < 0.0 => 0,
+                        _ => u32::MAX,
+                    };
+                    // no scale
+                    if self.peek_token_is(Kind::RightParen) {
+                        self.next_token();
+
+                        ast::DataType::Numeric(Some(ast::NumericSize {
+                            precision: precision_u32,
+                            scale: None,
+                        }))
+                    } else {
+                        // parse scale
+                        self.expect_kind(Kind::Comma, &self.peek_token)?;
+                        self.next_token();
+
+                        // skip comma
+                        self.next_token();
+                        let scale_literal = match self.current_token.kind() {
+                            Kind::Number => self.current_token.literal(),
+                            _ => return Err(self.expected_err("number", &self.current_token)),
+                        };
+                        let scale_f64 = match scale_literal {
+                            Literal::Number(f) => *f,
+                            _ => return Err(self.expected_err("number", &self.current_token)),
+                        };
+                        let scale_u32: u32 = match scale_f64 {
+                            p if p >= 0.0 && p <= u32::MAX as f64 => precision as u32,
+                            p if p < 0.0 => 0,
+                            _ => u32::MAX,
+                        };
+                        self.expect_kind(Kind::RightParen, &self.peek_token)?;
+                        self.next_token();
+
+                        ast::DataType::Numeric(Some(ast::NumericSize {
+                            precision: precision_u32,
+                            scale: Some(scale_u32),
+                        }))
+                    }
+                }
+            }
+            Kind::Keyword(Keyword::VARCHAR) => {
+                if !self.peek_token_is(Kind::LeftParen) {
+                    ast::DataType::Varchar(None)
+                } else {
+                    // parse size
+                    // skip left parenthesis
+                    self.expect_kind(Kind::LeftParen, &self.peek_token)?;
+                    self.next_token();
+
+                    self.expect_kind(Kind::Number, &self.peek_token)?;
+                    self.next_token();
+                    let size_literal = match self.current_token.kind() {
+                        Kind::Number => self.current_token.literal(),
+                        _ => return Err(self.expected_err("number", &self.current_token)),
+                    };
+                    let size_f64 = match size_literal {
+                        Literal::Number(f) => *f,
+                        _ => return Err(self.expected_err("number", &self.current_token)),
+                    };
+                    let size_u32: u32 = match size_f64 {
+                        p if p >= 0.0 && p <= u32::MAX as f64 => size_f64 as u32,
+                        p if p < 0.0 => 0,
+                        _ => u32::MAX,
+                    };
+                    self.expect_kind(Kind::LeftParen, &self.peek_token)?;
+                    self.next_token();
+
+                    ast::DataType::Varchar(Some(size_u32))
+                }
+            }
+            _ => return Err(self.expected_err("data type", &self.current_token)),
+        };
+
+        self.next_token();
+        return Ok(data_type);
+    }
+
     fn parse_expression(&mut self, precedence: u8) -> Result<ast::Expression, String> {
         // check if the current token is an identifier
         // or if it is a prefix operator
@@ -1069,6 +1280,29 @@ impl<'a> Parser<'a> {
                         return Ok(ast::Expression::Literal(ident));
                     }
                 }
+            }
+            Kind::Keyword(Keyword::CAST) => {
+                // expect the left paren
+                self.expect_kind(Kind::LeftParen, &self.peek_token)?;
+                self.next_token();
+                // skip left paren
+                self.next_token();
+
+                // parse the expression
+                let expression = self.parse_expression(PRECEDENCE_LOWEST)?;
+
+                self.expect_kind(Kind::Keyword(Keyword::AS), &self.peek_token)?;
+                self.next_token();
+
+                // parse the data type
+                let data_type = self.parse_data_type()?;
+                self.expect_kind(Kind::RightParen, &self.peek_token)?;
+                self.next_token();
+
+                return Ok(ast::Expression::Cast {
+                    expression: Box::new(expression),
+                    data_type,
+                });
             }
             Kind::Plus | Kind::Minus => {
                 let operator = self.current_token.clone();
@@ -1241,7 +1475,8 @@ impl<'a> Parser<'a> {
             | Kind::Keyword(Keyword::STDEVP)
             | Kind::Keyword(Keyword::SUM)
             | Kind::Keyword(Keyword::VAR)
-            | Kind::Keyword(Keyword::VARP) => {
+            | Kind::Keyword(Keyword::VARP)
+            | Kind::Keyword(Keyword::GETDATE) => {
                 let function_name = self.current_token.clone();
                 Ok(self.parse_function(ast::Expression::Literal(function_name))?)
             }

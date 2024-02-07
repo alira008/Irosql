@@ -2,7 +2,7 @@ use crate::{
     ast::{
         CommonTableExpression, Expression, FetchArg, IntoArg, Join, JoinType, NextOrFirst,
         OffsetArg, OrderByArg, OverClause, Query, RowOrRows, RowsOrRange, SelectItem,
-        SelectStatement, Statement, TableArg, TableSource, TopArg, WindowFrame, WindowFrameBound,
+        SelectStatement, Statement, TableArg, TableSource, TopArg, WindowFrame, WindowFrameBound, DataType,
     },
     token::Token,
 };
@@ -241,6 +241,8 @@ pub trait Visitor {
     fn visit_subquery(&mut self, query: &SelectStatement) {
         self.visit_select_query(&query);
     }
+    fn visit_cast(&mut self, expression: &Expression);
+    fn visit_data_type(&mut self, data_type: &DataType);
 }
 
 pub fn walk_query<V: Visitor + ?Sized>(visitor: &mut V, query: &Query) {
@@ -267,6 +269,7 @@ pub fn walk_expression<V: Visitor + ?Sized>(visitor: &mut V, e: &Expression) {
         Expression::Exists(e) => visitor.visit_exists_expression(e),
         Expression::ExpressionList(e) => visitor.visit_expression_list_expression(e),
         Expression::Function { .. } => visitor.visit_function_expression(e),
+        Expression::Cast { .. } => visitor.visit_cast(e),
     }
 }
 
