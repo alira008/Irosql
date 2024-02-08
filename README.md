@@ -19,6 +19,10 @@ Formats T-SQL queries into a standardized readable format. Settings are inspired
 this is a CLI where you pass options and pass the input and it outputs result query into stdout.
 Errors are returned in stderr.
 
+### Example 
+
+`sql_formatter -k upper -b -i 'select top 50 percent LastPrice, HighPrice, LowPrice, QuoteTime from Market mt where QuoteTime > '\''6:30'\'' and PercentChange > 0 oRDer By Symbol'`
+
 ### Features In Progress
 
 - [x] Select Queries
