@@ -1,26 +1,35 @@
-# T-SQL LSP
+# T-SQL Interpreter
 
 ## SQL_LSP
 
-Language Server Microsoft SQL Server
+### Todo
+
+My Language Server for T-SQL. Thinking about making this work for possibly SSMS
+but also trying to make it work for Neovim
 
 ## SQL_PARSER
 
 Parses T-SQL queries and places them into abstract syntax to make it easier for other crates
 make sense of the queries that are given to it
 
+## SQL_Formatter
+
+Formats T-SQL queries into a standardized readable format. Settings are inspired by 
+[Poor Man's TSQL Formatter](https://github.com/TaoK/PoorMansTSqlFormatter). Right now
+this is a CLI where you pass options and pass the input and it outputs result query into stdout.
+Errors are returned in stderr.
 
 ### Features In Progress
 
-- [ ] Select Queries
+- [x] Select Queries
     - [x] \[ ALL | DISTINCT ]
     - [x] TOP (expression) \[ PERCENT ] | \[ WITH TIES ]  
-    - [ ] select items
+    - [x] select items
         - [x] with subqueries
         - [x] with numbers
         - [x] with identifiers
         - [x] with aliases
-        - [ ] with aggregate functions
+        - [x] with aggregate functions
     - [ ] from clause
         - [x] basic table
         - [x] table with alias
@@ -28,25 +37,25 @@ make sense of the queries that are given to it
         - [ ] pivot table
         - [ ] unpivot table
         - [x] joins
-    - [ ] where clause 
+    - [x] where clause 
         - [x] with subqueries
         - [x] with numbers
         - [x] with identifiers
-        - [ ] with aggregate functions
-    - [ ] group by clause
+        - [x] with aggregate functions
+    - [x] group by clause
         - [x] with numbers
         - [x] with identifiers
-        - [ ] with aggregate functions
-    - [ ] having clause
+        - [x] with aggregate functions
+    - [x] having clause
         - [x] with subqueries
         - [x] with numbers
         - [x] with identifiers
-        - [ ] with aggregate functions
-    - [ ] order by clause
+        - [x] with aggregate functions
+    - [x] order by clause
         - [x] with numbers
         - [x] with identifiers
 
-- [ ] CTEs
+- [x] CTEs
 - [ ] Insert Queries
 - [ ] Bulk Insert Queries
 - [ ] Delete Queries
