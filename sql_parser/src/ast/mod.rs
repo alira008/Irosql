@@ -5,48 +5,11 @@ use core::fmt;
 pub use data_type::DataType;
 pub use data_type::NumericSize;
 
-fn display_list_comma_separated<T>(list: &[T], f: &mut fmt::Formatter) -> fmt::Result
-where
-    T: fmt::Display,
-{
-    display_list_delimiter_separated(list, ", ", f)
-}
-
-fn display_list_delimiter_separated<T>(
-    list: &[T],
-    delimeter: &str,
-    f: &mut fmt::Formatter,
-) -> fmt::Result
-where
-    T: fmt::Display,
-{
-    for (i, item) in list.iter().enumerate() {
-        write!(f, "{}", item)?;
-
-        if i < list.len() - 1 {
-            write!(f, "{delimeter}")?;
-        }
-    }
-    Ok(())
-}
-
 #[derive(Debug, PartialEq, Clone)]
 pub struct CommonTableExpression {
     pub name: Expression,
     pub columns: Vec<Expression>,
     pub query: SelectStatement,
-}
-
-impl fmt::Display for CommonTableExpression {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{}", self.name)?;
-        if !self.columns.is_empty() {
-            write!(f, "(")?;
-            display_list_comma_separated(&self.columns, f)?;
-            write!(f, ")")?;
-        }
-        write!(f, " AS ({})", self.query)
-    }
 }
 
 #[derive(Debug, PartialEq, Clone)]
@@ -55,28 +18,10 @@ pub enum ExecOrExecute {
     Execute,
 }
 
-impl fmt::Display for ExecOrExecute {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match &self {
-            ExecOrExecute::Exec => write!(f, "EXEC"),
-            ExecOrExecute::Execute => write!(f, "EXECUTE"),
-        }
-    }
-}
-
 #[derive(Debug, PartialEq, Clone)]
 pub struct ProcedureParameter {
     pub name: Option<Token>,
     pub value: Expression,
-}
-
-impl fmt::Display for ProcedureParameter {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        if let Some(name) = &self.name {
-            write!(f, "{} = ", name)?;
-        }
-        write!(f, "{}", &self.value)
-    }
 }
 
 #[derive(Debug, PartialEq, Clone)]
@@ -98,49 +43,12 @@ pub enum Statement {
     },
 }
 
-impl fmt::Display for Statement {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match &self {
-            Statement::Select(select) => write!(f, "{}", select),
-            Statement::CTE { ctes, statement } => {
-                write!(f, "WITH ")?;
-                display_list_comma_separated(ctes, f)?;
-                write!(f, " {}", statement)
-            }
-            Statement::Declare(local_variables) => {
-                write!(f, "DECLARE ")?;
-                display_list_comma_separated(local_variables, f)
-            }
-            Statement::SetLocalVariable { name, value } => write!(f, "SET {} = {}", name, value),
-            Statement::Execute {
-                keyword,
-                procedure_name,
-                parameters,
-            } => {
-                write!(f, "{} {}", keyword, procedure_name)?;
-                display_list_comma_separated(parameters, f)
-            }
-        }
-    }
-}
-
 #[derive(Debug, PartialEq, Clone)]
 pub struct LocalVariable {
     pub name: Token,
     pub is_as: bool,
     pub data_type: DataType,
     pub value: Option<Expression>,
-}
-
-impl fmt::Display for LocalVariable {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{}", self.name)?;
-        if self.is_as {
-            write!(f, " AS {}", self.data_type)
-        } else {
-            write!(f, " {}", self.data_type)
-        }
-    }
 }
 
 #[derive(Debug, PartialEq, Clone)]
@@ -153,15 +61,6 @@ impl Query {
         Query {
             statements: Vec::new(),
         }
-    }
-}
-
-impl fmt::Display for Query {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        for statement in &self.statements {
-            write!(f, "{}", statement)?;
-        }
-        Ok(())
     }
 }
 
@@ -220,6 +119,267 @@ pub enum Expression {
         expression: Box<Expression>,
         data_type: DataType,
     },
+}
+
+#[derive(Debug, PartialEq, Clone)]
+pub struct OverClause {
+    pub partition_by: Vec<Expression>,
+    pub order_by: Vec<OrderByArg>,
+    pub window_frame: Option<WindowFrame>,
+}
+
+#[derive(Debug, PartialEq, Clone, Copy)]
+pub enum RowsOrRange {
+    Rows,
+    Range,
+}
+
+#[derive(Debug, PartialEq, Clone)]
+pub enum WindowFrameBound {
+    CurrentRow,
+    Preceding(Expression),
+    Following(Expression),
+    UnboundedPreceding,
+    UnboundedFollowing,
+}
+
+#[derive(Debug, PartialEq, Clone)]
+pub struct WindowFrame {
+    pub rows_or_range: RowsOrRange,
+    pub start: WindowFrameBound,
+    pub end: Option<WindowFrameBound>,
+}
+
+#[derive(Debug, PartialEq, Clone)]
+pub enum SelectItem {
+    Wildcard,
+    Unnamed(Expression),
+    WithAlias {
+        expression: Expression,
+        as_token: bool,
+        alias: String,
+    },
+    WildcardWithAlias {
+        expression: Expression,
+        as_token: bool,
+        alias: String,
+    },
+}
+
+#[derive(Debug, PartialEq, Clone, Default)]
+pub struct SelectStatement {
+    pub distinct: bool,
+    pub top: Option<TopArg>,
+    pub columns: Vec<SelectItem>,
+    pub into_table: Option<IntoArg>,
+    pub table: Option<TableArg>,
+    pub where_clause: Option<Expression>,
+    pub group_by: Vec<Expression>,
+    pub having: Option<Expression>,
+    pub order_by: Vec<OrderByArg>,
+    pub offset: Option<OffsetArg>,
+    pub fetch: Option<FetchArg>,
+}
+
+impl SelectStatement {
+    pub fn new() -> Self {
+        SelectStatement::default()
+    }
+}
+
+#[derive(Debug, PartialEq, Clone)]
+pub struct TopArg {
+    pub with_ties: bool,
+    pub percent: bool,
+    pub quantity: Expression,
+}
+
+#[derive(Debug, PartialEq, Clone)]
+pub struct IntoArg {
+    pub table: Expression,
+    pub file_group: Option<Expression>,
+}
+
+#[derive(Debug, PartialEq, Clone)]
+pub enum TableSource {
+    Table {
+        name: Expression,
+        is_as: bool,
+        alias: Option<String>,
+    },
+    Derived {
+        query: Expression,
+        is_as: bool,
+        alias: String,
+    },
+    Pivot,
+    Unpivot,
+    TableValuedFunction {
+        function: Expression,
+        is_as: bool,
+        alias: Option<String>,
+    },
+}
+
+#[derive(Debug, PartialEq, Clone)]
+pub enum JoinType {
+    Inner,
+    Left,
+    LeftOuter,
+    Right,
+    RightOuter,
+    Full,
+    FullOuter,
+    CrossApply,
+    OuterApply,
+}
+
+#[derive(Debug, PartialEq, Clone)]
+pub struct Join {
+    pub join_type: JoinType,
+    pub table: TableSource,
+    pub condition: Option<Expression>,
+}
+
+#[derive(Debug, PartialEq, Clone)]
+pub struct TableArg {
+    pub table: TableSource,
+    pub joins: Vec<Join>,
+}
+
+#[derive(Debug, PartialEq, Clone)]
+pub struct OrderByArg {
+    pub column: Expression,
+    pub asc: Option<bool>,
+}
+
+#[derive(Debug, PartialEq, Clone)]
+pub struct OffsetArg {
+    pub value: Expression,
+    // either ROW or ROWS
+    pub row: RowOrRows,
+}
+
+#[derive(Debug, PartialEq, Clone, Copy)]
+pub enum RowOrRows {
+    Row,
+    Rows,
+}
+
+#[derive(Debug, PartialEq, Clone)]
+pub struct FetchArg {
+    pub value: Expression,
+    // either NEXT or FIRST
+    pub first: NextOrFirst,
+    // either ROW or ROWS
+    pub row: RowOrRows,
+}
+
+#[derive(Debug, PartialEq, Clone, Copy)]
+pub enum NextOrFirst {
+    Next,
+    First,
+}
+
+fn display_list_comma_separated<T>(list: &[T], f: &mut fmt::Formatter) -> fmt::Result
+where
+    T: fmt::Display,
+{
+    display_list_delimiter_separated(list, ", ", f)
+}
+
+fn display_list_delimiter_separated<T>(
+    list: &[T],
+    delimeter: &str,
+    f: &mut fmt::Formatter,
+) -> fmt::Result
+where
+    T: fmt::Display,
+{
+    for (i, item) in list.iter().enumerate() {
+        write!(f, "{}", item)?;
+
+        if i < list.len() - 1 {
+            write!(f, "{delimeter}")?;
+        }
+    }
+    Ok(())
+}
+
+impl fmt::Display for CommonTableExpression {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}", self.name)?;
+        if !self.columns.is_empty() {
+            write!(f, "(")?;
+            display_list_comma_separated(&self.columns, f)?;
+            write!(f, ")")?;
+        }
+        write!(f, " AS ({})", self.query)
+    }
+}
+
+impl fmt::Display for ExecOrExecute {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match &self {
+            ExecOrExecute::Exec => write!(f, "EXEC"),
+            ExecOrExecute::Execute => write!(f, "EXECUTE"),
+        }
+    }
+}
+
+impl fmt::Display for ProcedureParameter {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        if let Some(name) = &self.name {
+            write!(f, "{} = ", name)?;
+        }
+        write!(f, "{}", &self.value)
+    }
+}
+
+impl fmt::Display for Statement {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match &self {
+            Statement::Select(select) => write!(f, "{}", select),
+            Statement::CTE { ctes, statement } => {
+                write!(f, "WITH ")?;
+                display_list_comma_separated(ctes, f)?;
+                write!(f, " {}", statement)
+            }
+            Statement::Declare(local_variables) => {
+                write!(f, "DECLARE ")?;
+                display_list_comma_separated(local_variables, f)
+            }
+            Statement::SetLocalVariable { name, value } => write!(f, "SET {} = {}", name, value),
+            Statement::Execute {
+                keyword,
+                procedure_name,
+                parameters,
+            } => {
+                write!(f, "{} {}", keyword, procedure_name)?;
+                display_list_comma_separated(parameters, f)
+            }
+        }
+    }
+}
+
+impl fmt::Display for LocalVariable {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}", self.name)?;
+        if self.is_as {
+            write!(f, " AS {}", self.data_type)
+        } else {
+            write!(f, " {}", self.data_type)
+        }
+    }
+}
+
+impl fmt::Display for Query {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        for statement in &self.statements {
+            write!(f, "{}", statement)?;
+        }
+        Ok(())
+    }
 }
 
 impl fmt::Display for Expression {
@@ -296,35 +456,6 @@ impl fmt::Display for Expression {
     }
 }
 
-#[derive(Debug, PartialEq, Clone)]
-pub struct OverClause {
-    pub partition_by: Vec<Expression>,
-    pub order_by: Vec<OrderByArg>,
-    pub window_frame: Option<WindowFrame>,
-}
-
-#[derive(Debug, PartialEq, Clone, Copy)]
-pub enum RowsOrRange {
-    Rows,
-    Range,
-}
-
-#[derive(Debug, PartialEq, Clone)]
-pub enum WindowFrameBound {
-    CurrentRow,
-    Preceding(Expression),
-    Following(Expression),
-    UnboundedPreceding,
-    UnboundedFollowing,
-}
-
-#[derive(Debug, PartialEq, Clone)]
-pub struct WindowFrame {
-    pub rows_or_range: RowsOrRange,
-    pub start: WindowFrameBound,
-    pub end: Option<WindowFrameBound>,
-}
-
 impl fmt::Display for WindowFrameBound {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match &self {
@@ -376,22 +507,6 @@ impl fmt::Display for OverClause {
     }
 }
 
-#[derive(Debug, PartialEq, Clone)]
-pub enum SelectItem {
-    Wildcard,
-    Unnamed(Expression),
-    WithAlias {
-        expression: Expression,
-        as_token: bool,
-        alias: String,
-    },
-    WildcardWithAlias {
-        expression: Expression,
-        as_token: bool,
-        alias: String,
-    },
-}
-
 impl fmt::Display for SelectItem {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match &self {
@@ -430,27 +545,6 @@ impl fmt::Display for SelectItem {
                 Ok(())
             }
         }
-    }
-}
-
-#[derive(Debug, PartialEq, Clone, Default)]
-pub struct SelectStatement {
-    pub distinct: bool,
-    pub top: Option<TopArg>,
-    pub columns: Vec<SelectItem>,
-    pub into_table: Option<IntoArg>,
-    pub table: Option<TableArg>,
-    pub where_clause: Option<Expression>,
-    pub group_by: Vec<Expression>,
-    pub having: Option<Expression>,
-    pub order_by: Vec<OrderByArg>,
-    pub offset: Option<OffsetArg>,
-    pub fetch: Option<FetchArg>,
-}
-
-impl SelectStatement {
-    pub fn new() -> Self {
-        SelectStatement::default()
     }
 }
 
@@ -520,13 +614,6 @@ impl fmt::Display for SelectStatement {
     }
 }
 
-#[derive(Debug, PartialEq, Clone)]
-pub struct TopArg {
-    pub with_ties: bool,
-    pub percent: bool,
-    pub quantity: Expression,
-}
-
 impl fmt::Display for TopArg {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match (self.with_ties, self.percent) {
@@ -538,12 +625,6 @@ impl fmt::Display for TopArg {
     }
 }
 
-#[derive(Debug, PartialEq, Clone)]
-pub struct IntoArg {
-    pub table: Expression,
-    pub file_group: Option<Expression>,
-}
-
 impl fmt::Display for IntoArg {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match &self.file_group {
@@ -551,27 +632,6 @@ impl fmt::Display for IntoArg {
             None => write!(f, "INTO {}", self.table),
         }
     }
-}
-
-#[derive(Debug, PartialEq, Clone)]
-pub enum TableSource {
-    Table {
-        name: Expression,
-        is_as: bool,
-        alias: Option<String>,
-    },
-    Derived {
-        query: Expression,
-        is_as: bool,
-        alias: String,
-    },
-    Pivot,
-    Unpivot,
-    TableValuedFunction {
-        function: Expression,
-        is_as: bool,
-        alias: Option<String>,
-    },
 }
 
 impl fmt::Display for TableSource {
@@ -620,19 +680,6 @@ impl fmt::Display for TableSource {
     }
 }
 
-#[derive(Debug, PartialEq, Clone)]
-pub enum JoinType {
-    Inner,
-    Left,
-    LeftOuter,
-    Right,
-    RightOuter,
-    Full,
-    FullOuter,
-    CrossApply,
-    OuterApply,
-}
-
 impl fmt::Display for JoinType {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match &self {
@@ -649,13 +696,6 @@ impl fmt::Display for JoinType {
     }
 }
 
-#[derive(Debug, PartialEq, Clone)]
-pub struct Join {
-    pub join_type: JoinType,
-    pub table: TableSource,
-    pub condition: Option<Expression>,
-}
-
 impl fmt::Display for Join {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "{} {}", self.join_type, self.table)?;
@@ -665,13 +705,6 @@ impl fmt::Display for Join {
         Ok(())
     }
 }
-
-#[derive(Debug, PartialEq, Clone)]
-pub struct TableArg {
-    pub table: TableSource,
-    pub joins: Vec<Join>,
-}
-
 impl fmt::Display for TableArg {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "{}", self.table)?;
@@ -681,12 +714,6 @@ impl fmt::Display for TableArg {
         }
         Ok(())
     }
-}
-
-#[derive(Debug, PartialEq, Clone)]
-pub struct OrderByArg {
-    pub column: Expression,
-    pub asc: Option<bool>,
 }
 
 impl fmt::Display for OrderByArg {
@@ -699,23 +726,10 @@ impl fmt::Display for OrderByArg {
     }
 }
 
-#[derive(Debug, PartialEq, Clone)]
-pub struct OffsetArg {
-    pub value: Expression,
-    // either ROW or ROWS
-    pub row: RowOrRows,
-}
-
 impl fmt::Display for OffsetArg {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "OFFSET {} {}", self.value, self.row)
     }
-}
-
-#[derive(Debug, PartialEq, Clone, Copy)]
-pub enum RowOrRows {
-    Row,
-    Rows,
 }
 
 impl fmt::Display for RowOrRows {
@@ -727,25 +741,10 @@ impl fmt::Display for RowOrRows {
     }
 }
 
-#[derive(Debug, PartialEq, Clone)]
-pub struct FetchArg {
-    pub value: Expression,
-    // either NEXT or FIRST
-    pub first: NextOrFirst,
-    // either ROW or ROWS
-    pub row: RowOrRows,
-}
-
 impl fmt::Display for FetchArg {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "FETCH {} {} {} ONLY", self.first, self.value, self.row)
     }
-}
-
-#[derive(Debug, PartialEq, Clone, Copy)]
-pub enum NextOrFirst {
-    Next,
-    First,
 }
 
 impl fmt::Display for NextOrFirst {
