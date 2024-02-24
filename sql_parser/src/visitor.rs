@@ -2,7 +2,7 @@ use crate::{
     ast::{
         CommonTableExpression, Expression, FetchArg, IntoArg, Join, JoinType, NextOrFirst,
         OffsetArg, OrderByArg, OverClause, Query, RowOrRows, RowsOrRange, SelectItem,
-        SelectStatement, Statement, TableArg, TableSource, TopArg, WindowFrame, WindowFrameBound, DataType, LocalVariable, ExecOrExecute, ProcedureParameter,
+        SelectStatement, Statement, TableArg, TableSource, TopArg, WindowFrame, WindowFrameBound, DataType, LocalVariable, ExecOrExecute, ProcedureParameter, CommonTableExpressionStatement,
     },
     token::Token,
 };
@@ -223,7 +223,15 @@ pub trait Visitor {
                 self.visit_cte(cte);
             }
 
-            self.visit_select_query(statement);
+            self.visit_common_table_expression_statement(statement);
+        }
+    }
+    fn visit_common_table_expression_statement(&mut self, cte_statement: &CommonTableExpressionStatement) {
+        match cte_statement {
+            CommonTableExpressionStatement::Select(select) => self.visit_select_query(select),
+            CommonTableExpressionStatement::Insert(_) => todo!(),
+            CommonTableExpressionStatement::Update(_) => todo!(),
+            CommonTableExpressionStatement::Delete(_) => todo!(),
         }
     }
     fn visit_cte(&mut self, cte: &CommonTableExpression) {

@@ -604,11 +604,21 @@ impl Visitor for Formatter {
                 self.visit_cte(cte);
             }
 
-            self.visit_select_query(statement);
+            self.visit_common_table_expression_statement(statement);
         } else {
             unreachable!();
         }
     }
+
+    fn visit_common_table_expression_statement(&mut self, cte_statement: &sql_parser::ast::CommonTableExpressionStatement) {
+        match cte_statement {
+            sql_parser::ast::CommonTableExpressionStatement::Select(select) => self.visit_select_query(select),
+            sql_parser::ast::CommonTableExpressionStatement::Insert(_) => todo!(),
+            sql_parser::ast::CommonTableExpressionStatement::Update(_) => todo!(),
+            sql_parser::ast::CommonTableExpressionStatement::Delete(_) => todo!(),
+        }
+    }
+
     fn visit_cte(&mut self, cte: &sql_parser::ast::CommonTableExpression) {
         self.visit_expression(&cte.name);
 

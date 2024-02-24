@@ -25,11 +25,19 @@ pub struct ProcedureParameter {
 }
 
 #[derive(Debug, PartialEq, Clone)]
+pub enum CommonTableExpressionStatement {
+    Select(SelectStatement),
+    Insert(SelectStatement),
+    Update(SelectStatement),
+    Delete(SelectStatement),
+}
+
+#[derive(Debug, PartialEq, Clone)]
 pub enum Statement {
     Select(SelectStatement),
     CTE {
         ctes: Vec<CommonTableExpression>,
-        statement: SelectStatement,
+        statement: CommonTableExpressionStatement,
     },
     Declare(Vec<LocalVariable>),
     SetLocalVariable {
@@ -333,6 +341,17 @@ impl fmt::Display for ProcedureParameter {
             write!(f, "{} = ", name)?;
         }
         write!(f, "{}", &self.value)
+    }
+}
+
+impl fmt::Display for CommonTableExpressionStatement {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match &self {
+            CommonTableExpressionStatement::Select(select) => write!(f, "{}", select),
+            CommonTableExpressionStatement::Insert(_) => todo!(),
+            CommonTableExpressionStatement::Update(_) => todo!(),
+            CommonTableExpressionStatement::Delete(_) => todo!(),
+        }
     }
 }
 

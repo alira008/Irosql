@@ -4,6 +4,7 @@ pub mod lexer;
 pub mod token;
 pub mod visitor;
 
+use ast::CommonTableExpressionStatement;
 use keywords::Keyword;
 use token::{Kind, Literal, Token};
 
@@ -325,15 +326,45 @@ impl<'a> Parser<'a> {
             ctes.push(cte);
         }
 
-        // check for the select keyword
-        self.expect_kind(Kind::Keyword(Keyword::SELECT), &self.peek_token)?;
+        self.expect_many_kind(
+            &[
+                Kind::Keyword(Keyword::SELECT),
+                Kind::Keyword(Keyword::INSERT),
+                Kind::Keyword(Keyword::UPDATE),
+                Kind::Keyword(Keyword::DELETE),
+            ],
+            &self.peek_token,
+        )?;
         self.next_token();
 
-        let select_statement = self.parse_select_statement()?;
-        Ok(ast::Statement::CTE {
-            ctes,
-            statement: select_statement,
-        })
+        // check for the select keyword
+        if self.current_token_is(Kind::Keyword(Keyword::SELECT)) {
+            let select_statement = self.parse_select_statement()?;
+            return Ok(ast::Statement::CTE {
+                ctes,
+                statement: CommonTableExpressionStatement::Select(select_statement),
+            });
+        } else if self.current_token_is(Kind::Keyword(Keyword::INSERT)) {
+            let insert_statement = self.parse_select_statement()?;
+            return Ok(ast::Statement::CTE {
+                ctes,
+                statement: CommonTableExpressionStatement::Insert(insert_statement),
+            });
+        } else if self.current_token_is(Kind::Keyword(Keyword::UPDATE)) {
+            let update_statement = self.parse_select_statement()?;
+            return Ok(ast::Statement::CTE {
+                ctes,
+                statement: CommonTableExpressionStatement::Update(update_statement),
+            });
+        } else if self.current_token_is(Kind::Keyword(Keyword::DELETE)) {
+            let delete_statement = self.parse_select_statement()?;
+            return Ok(ast::Statement::CTE {
+                ctes,
+                statement: CommonTableExpressionStatement::Delete(delete_statement),
+            });
+        } else {
+            unreachable!();
+        }
     }
 
     fn parse_select_statement(&mut self) -> Result<ast::SelectStatement, String> {
