@@ -130,19 +130,70 @@ impl<'a> Lexer<'a> {
                         )
                     }
                 }
-                '+' => Token::new(Kind::Plus, Literal::new_string("+"), self.current_location),
-                '-' => Token::new(Kind::Minus, Literal::new_string("-"), self.current_location),
-                '/' => Token::new(
-                    Kind::Divide,
-                    Literal::new_string("/"),
-                    self.current_location,
-                ),
-                '*' => Token::new(
-                    Kind::Asterisk,
-                    Literal::new_string("*"),
-                    self.current_location,
-                ),
-                '%' => Token::new(Kind::Mod, Literal::new_string("%"), self.current_location),
+                '+' => {
+                    if self.chars.peek() == Some(&'=') {
+                        self.read_char();
+                        Token::new(Kind::PlusEqual, Literal::new_string("+="), self.current_location)
+                    } else {
+                        Token::new(Kind::Plus, Literal::new_string("+"), self.current_location)
+                    }
+                }
+                '-' => {
+                    if self.chars.peek() == Some(&'=') {
+                        self.read_char();
+                        Token::new(Kind::MinusEqual, Literal::new_string("-="), self.current_location)
+                    } else {
+                        Token::new(Kind::Minus, Literal::new_string("-"), self.current_location)
+                    }
+                }
+                '/' => {
+                    if self.chars.peek() == Some(&'=') {
+                        self.read_char();
+                        Token::new(Kind::DivideEqual, Literal::new_string("/="), self.current_location)
+                    } else {
+                        Token::new(Kind::Divide, Literal::new_string("/"), self.current_location)
+                    }
+                }
+                '*' => {
+                    if self.chars.peek() == Some(&'=') {
+                        self.read_char();
+                        Token::new(Kind::MultiplyEqual, Literal::new_string("*="), self.current_location)
+                    } else {
+                        Token::new(Kind::Asterisk, Literal::new_string("*"), self.current_location)
+                    }
+                }
+                '%' => {
+                    if self.chars.peek() == Some(&'=') {
+                        self.read_char();
+                        Token::new(Kind::PercentEqual, Literal::new_string("%="), self.current_location)
+                    } else {
+                        Token::new(Kind::Mod, Literal::new_string("%"), self.current_location)
+                    }
+                }
+                '^' => {
+                    if self.chars.peek() == Some(&'=') {
+                        self.read_char();
+                        Token::new(Kind::CaretEqual, Literal::new_string("^="), self.current_location)
+                    } else {
+                        Token::new(Kind::Illegal, Literal::new_string("^"), self.current_location)
+                    }
+                }
+                '|' => {
+                    if self.chars.peek() == Some(&'=') {
+                        self.read_char();
+                        Token::new(Kind::OrEqual, Literal::new_string("|="), self.current_location)
+                    } else {
+                        Token::new(Kind::Mod, Literal::new_string("|"), self.current_location)
+                    }
+                }
+                '&' => {
+                    if self.chars.peek() == Some(&'=') {
+                        self.read_char();
+                        Token::new(Kind::AndEqual, Literal::new_string("&="), self.current_location)
+                    } else {
+                        Token::new(Kind::Mod, Literal::new_string("&"), self.current_location)
+                    }
+                }
                 '.' => Token::new(
                     Kind::Period,
                     Literal::new_string("."),

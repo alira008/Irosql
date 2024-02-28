@@ -2,7 +2,7 @@ use crate::{
     ast::{
         CommonTableExpression, Expression, FetchArg, IntoArg, Join, JoinType, NextOrFirst,
         OffsetArg, OrderByArg, OverClause, Query, RowOrRows, RowsOrRange, SelectItem,
-        SelectStatement, Statement, TableArg, TableSource, TopArg, WindowFrame, WindowFrameBound, DataType, LocalVariable, ExecOrExecute, ProcedureParameter, CommonTableExpressionStatement, InsertStatement, UpdateStatement, DeleteStatement, UpdateSet,
+        SelectStatement, Statement, TableArg, TableSource, TopArg, WindowFrame, WindowFrameBound, DataType, LocalVariable, ExecOrExecute, ProcedureParameter, CommonTableExpressionStatement, InsertStatement, UpdateStatement, DeleteStatement,
     },
     token::Token,
 };
@@ -255,7 +255,6 @@ pub trait Visitor {
     fn visit_insert_query(&mut self, query: &InsertStatement);
     fn visit_update_query(&mut self, query: &UpdateStatement);
     fn visit_delete_query(&mut self, query: &DeleteStatement);
-    fn visit_update_set(&mut self, update_set: &UpdateSet);
     fn visit_column_list(&mut self, column_list: &[Expression]);
 }
 

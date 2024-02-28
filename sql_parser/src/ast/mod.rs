@@ -189,15 +189,9 @@ pub struct InsertStatement {
 pub struct UpdateStatement {
     pub top: Option<TopArg>,
     pub table: Expression,
-    pub update_columns: Vec<UpdateSet>,
+    pub update_columns: Vec<Expression>,
     pub from: Option<TableArg>,
     pub where_clause: Option<Expression>,
-}
-
-#[derive(Debug, PartialEq, Clone)]
-pub struct UpdateSet {
-    pub column: Expression,
-    pub value: Expression,
 }
 
 #[derive(Debug, PartialEq, Clone)]
@@ -618,12 +612,6 @@ impl fmt::Display for InsertStatement {
         write!(f, "VALUES (")?;
         display_list_comma_separated(&self.values, f)?;
         write!(f, ") ")
-    }
-}
-
-impl fmt::Display for UpdateSet {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{} = {}", self.column, self.value)
     }
 }
 

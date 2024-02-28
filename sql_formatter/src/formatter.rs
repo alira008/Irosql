@@ -181,23 +181,17 @@ impl Visitor for Formatter {
         self.visit_expression(&query.table);
         self.print_new_line();
         self.print_keyword("SET ");
-        for (i, update_set) in query.update_columns.iter().enumerate() {
+        for (i, expression) in query.update_columns.iter().enumerate() {
             if i > 0 {
                 self.print_select_column_comma();
             }
-            self.visit_update_set(update_set);
+            self.visit_expression(expression);
         }
         if query.from.is_some() {
             self.print_keyword("FROM ");
             self.visit_select_table(&query.from);
         }
         self.visit_select_where_clause(&query.where_clause);
-    }
-
-    fn visit_update_set(&mut self, update_set: &sql_parser::ast::UpdateSet) {
-        self.visit_expression(&update_set.column);
-        self.print_keyword(" = ");
-        self.visit_expression(&update_set.value);
     }
 
     fn visit_select_top_argument(&mut self, top: &Option<sql_parser::ast::TopArg>) {

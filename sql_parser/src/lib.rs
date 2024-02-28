@@ -18,13 +18,14 @@ pub struct Parser<'a> {
 
 // create a precedence table
 // this will be used to determine the precedence of operators
-const PRECEDENCE_HIGHEST: u8 = 8;
-const PRECEDENCE_PRODUCT: u8 = 7;
-const PRECEDENCE_SUM: u8 = 6;
-const PRECEDENCE_COMPARISON: u8 = 5;
-const PRECEDENCE_NOT: u8 = 4;
-const PRECEDENCE_AND: u8 = 3;
-const PRECEDENCE_OTHER_LOGICALS: u8 = 2;
+const PRECEDENCE_HIGHEST: u8 = 9;
+const PRECEDENCE_PRODUCT: u8 = 8;
+const PRECEDENCE_SUM: u8 = 7;
+const PRECEDENCE_COMPARISON: u8 = 6;
+const PRECEDENCE_NOT: u8 = 5;
+const PRECEDENCE_AND: u8 = 4;
+const PRECEDENCE_OTHER_LOGICALS: u8 = 3;
+const PRECEDENCE_ASSIGNMENT: u8 = 2;
 const PRECEDENCE_LOWEST: u8 = 1;
 
 impl<'a> Parser<'a> {
@@ -671,7 +672,7 @@ impl<'a> Parser<'a> {
         })
     }
 
-    fn parse_updating_columns(&mut self) -> Result<Vec<ast::UpdateSet>, String> {
+    fn parse_updating_columns(&mut self) -> Result<Vec<ast::Expression>, String> {
         // check if the next token is an identifier
         self.expect_kind(Kind::Ident, &self.peek_token)?;
         self.next_token();
@@ -685,8 +686,8 @@ impl<'a> Parser<'a> {
                 operator,
                 right,
             } => {
-                column = *left;
-                value = *right;
+                column = left;
+                value = right;
                 op = operator;
             }
             _ => {
@@ -698,15 +699,15 @@ impl<'a> Parser<'a> {
             }
         };
 
-        if !matches!(&column, ast::Expression::Literal(t) if matches!(t.kind(), Kind::Ident | Kind::LocalVariable))
+        if !matches!(*column, ast::Expression::Literal(ref t) if matches!(t.kind(), Kind::Ident | Kind::LocalVariable))
         {
             self.expected("expected identifier for column name", &self.current_token)?;
             unreachable!()
         }
         // check valid operators
         self.expect_kind(Kind::Equal, &op)?;
-        match &value {
-            ast::Expression::Literal(t) => {
+        match *value {
+            ast::Expression::Literal(ref t) => {
                 self.expect_many_kind(
                     &[
                         Kind::Number,
@@ -715,10 +716,10 @@ impl<'a> Parser<'a> {
                         Kind::Keyword(Keyword::NULL),
                         Kind::Keyword(Keyword::DEFAULT),
                     ],
-                    t,
+                    &t,
                 )?;
             }
-            ast::Expression::Subquery(s) => {
+            ast::Expression::Subquery(ref s) => {
                 if s.columns.len() != 1 {
                     self.expected("expected subquery with one column", &self.current_token)?;
                 }
@@ -728,7 +729,11 @@ impl<'a> Parser<'a> {
             }
         }
 
-        let mut update_columns = vec![ast::UpdateSet { column, value }];
+        let mut update_columns = vec![ast::Expression::Binary {
+            left: column,
+            right: value,
+            operator: op,
+        }];
 
         while self.peek_token_is(Kind::Comma) {
             // go to the COMMA
@@ -746,8 +751,8 @@ impl<'a> Parser<'a> {
                     operator,
                     right,
                 } => {
-                    column = *left;
-                    value = *right;
+                    column = left;
+                    value = right;
                     op = operator;
                 }
                 _ => {
@@ -759,15 +764,28 @@ impl<'a> Parser<'a> {
                 }
             };
 
-            if !matches!(&column, ast::Expression::Literal(t) if matches!(t.kind(), Kind::Ident | Kind::LocalVariable))
+            if !matches!(*column, ast::Expression::Literal(ref t) if matches!(t.kind(), Kind::Ident | Kind::LocalVariable))
             {
                 self.expected("expected identifier for column name", &self.current_token)?;
                 unreachable!()
             }
             // check valid operators
-            self.expect_kind(Kind::Equal, &op)?;
-            match &value {
-                ast::Expression::Literal(t) => {
+            self.expect_many_kind(
+                &[
+                    Kind::Equal,
+                    Kind::PlusEqual,
+                    Kind::MinusEqual,
+                    Kind::MultiplyEqual,
+                    Kind::DivideEqual,
+                    Kind::PercentEqual,
+                    Kind::AndEqual,
+                    Kind::OrEqual,
+                    Kind::CaretEqual,
+                ],
+                &op,
+            )?;
+            match *value {
+                ast::Expression::Literal(ref t) => {
                     self.expect_many_kind(
                         &[
                             Kind::Number,
@@ -776,10 +794,10 @@ impl<'a> Parser<'a> {
                             Kind::Keyword(Keyword::NULL),
                             Kind::Keyword(Keyword::DEFAULT),
                         ],
-                        t,
+                        &t,
                     )?;
                 }
-                ast::Expression::Subquery(s) => {
+                ast::Expression::Subquery(ref s) => {
                     if s.columns.len() != 1 {
                         self.expected("expected subquery with one column", &self.current_token)?;
                     }
@@ -789,7 +807,11 @@ impl<'a> Parser<'a> {
                 }
             }
 
-            update_columns.push(ast::UpdateSet { column, value });
+            update_columns.push(ast::Expression::Binary {
+                left: column,
+                right: value,
+                operator: op,
+            });
         }
 
         Ok(update_columns)
@@ -2139,6 +2161,14 @@ impl<'a> Parser<'a> {
             | Kind::Minus
             | Kind::Asterisk
             | Kind::Divide
+            | Kind::PlusEqual
+            | Kind::MinusEqual
+            | Kind::MultiplyEqual
+            | Kind::DivideEqual
+            | Kind::PercentEqual
+            | Kind::AndEqual
+            | Kind::OrEqual
+            | Kind::CaretEqual
             | Kind::Keyword(Keyword::AND)
             | Kind::Keyword(Keyword::OR) => {
                 let operator = self.current_token.clone();
@@ -2251,6 +2281,14 @@ impl<'a> Parser<'a> {
             | Kind::Keyword(Keyword::LIKE)
             | Kind::Keyword(Keyword::OR)
             | Kind::Keyword(Keyword::SOME) => PRECEDENCE_OTHER_LOGICALS,
+            Kind::PlusEqual
+            | Kind::MinusEqual
+            | Kind::MultiplyEqual
+            | Kind::DivideEqual
+            | Kind::PercentEqual
+            | Kind::AndEqual
+            | Kind::OrEqual
+            | Kind::CaretEqual => PRECEDENCE_ASSIGNMENT,
             _ => PRECEDENCE_LOWEST,
         }
     }

@@ -136,6 +136,14 @@ pub enum Kind {
     Divide,
     Asterisk,
     Mod,
+    PlusEqual,
+    MinusEqual,
+    DivideEqual,
+    MultiplyEqual,
+    PercentEqual,
+    AndEqual,
+    OrEqual,
+    CaretEqual,
     Period,
     SemiColon,
     LeftBracket,
@@ -181,12 +189,14 @@ impl fmt::Display for Kind {
             Kind::ExclamationMark => f.write_str("!"),
             Kind::Illegal => f.write_str("ILLEGAL"),
             Kind::Eof => f.write_str("EOF"),
+            Kind::PlusEqual => f.write_str("+="),
+            Kind::MinusEqual => f.write_str("-="),
+            Kind::DivideEqual => f.write_str("/="),
+            Kind::MultiplyEqual => f.write_str("*="),
+            Kind::PercentEqual => f.write_str("%="),
+            Kind::AndEqual => f.write_str("&="),
+            Kind::OrEqual => f.write_str("|="),
+            Kind::CaretEqual => f.write_str("^="),
         }
     }
 }
-
-// #[derive(Debug, Clone, PartialEq)]
-// pub struct Identifier {
-//     value: String,
-//     quote_style: Option<char>,
-// }
