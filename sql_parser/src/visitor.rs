@@ -256,6 +256,7 @@ pub trait Visitor {
     fn visit_update_query(&mut self, query: &UpdateStatement);
     fn visit_delete_query(&mut self, query: &DeleteStatement);
     fn visit_update_set(&mut self, update_set: &UpdateSet);
+    fn visit_column_list(&mut self, column_list: &[Expression]);
 }
 
 pub fn walk_query<V: Visitor + ?Sized>(visitor: &mut V, query: &Query) {

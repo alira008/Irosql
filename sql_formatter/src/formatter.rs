@@ -94,6 +94,24 @@ impl Formatter {
             self.formatted_query.push_str(", ");
         }
     }
+
+    fn print_column_list_open_paren(&mut self) {
+        self.increase_indent();
+        self.formatted_query.push_str(&'('.to_string());
+        if self.settings.indent_comma_lists.is_none() {
+            self.print_new_line();
+        }
+        self.decrease_indent();
+    }
+
+    fn print_column_list_close_paren(&mut self) {
+        self.increase_indent();
+        if self.settings.indent_comma_lists.is_none() {
+            self.print_new_line();
+        }
+        self.formatted_query.push_str(&')'.to_string());
+        self.decrease_indent();
+    }
 }
 
 impl Visitor for Formatter {
@@ -132,23 +150,22 @@ impl Visitor for Formatter {
         self.visit_select_top_argument(&query.top);
         self.print_keyword("INTO ");
         self.visit_expression(&query.table);
-        self.print_keyword("( ");
-        for (i, column) in query.columns.iter().enumerate() {
+        self.visit_column_list(&query.columns);
+        self.print_new_line();
+        self.print_keyword("VALUES");
+        self.visit_column_list(&query.values);
+    }
+
+    fn visit_column_list(&mut self, column_list: &[sql_parser::ast::Expression]) {
+        self.formatted_query.push_str(" ");
+        self.print_column_list_open_paren();
+        for (i, column) in column_list.iter().enumerate() {
             if i > 0 {
                 self.print_select_column_comma();
             }
             self.visit_expression(column);
         }
-        self.print_keyword(") ");
-        self.print_keyword("VALUES ");
-        self.print_keyword("( ");
-        for (i, column) in query.values.iter().enumerate() {
-            if i > 0 {
-                self.print_select_column_comma();
-            }
-            self.visit_expression(column);
-        }
-        self.print_keyword(") ");
+        self.print_column_list_close_paren();
     }
 
     fn visit_delete_query(&mut self, query: &sql_parser::ast::DeleteStatement) {
@@ -162,6 +179,7 @@ impl Visitor for Formatter {
         self.print_keyword("UPDATE ");
         self.visit_select_top_argument(&query.top);
         self.visit_expression(&query.table);
+        self.print_new_line();
         self.print_keyword("SET ");
         for (i, update_set) in query.update_columns.iter().enumerate() {
             if i > 0 {
@@ -179,7 +197,7 @@ impl Visitor for Formatter {
     fn visit_update_set(&mut self, update_set: &sql_parser::ast::UpdateSet) {
         self.visit_expression(&update_set.column);
         self.print_keyword(" = ");
-        self.visit_expression(&update_set.column);
+        self.visit_expression(&update_set.value);
     }
 
     fn visit_select_top_argument(&mut self, top: &Option<sql_parser::ast::TopArg>) {

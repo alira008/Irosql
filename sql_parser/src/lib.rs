@@ -417,23 +417,26 @@ impl<'a> Parser<'a> {
         self.expect_kind(Kind::Ident, &self.peek_token)?;
         self.next_token();
 
-        let into_table = self.parse_expression(PRECEDENCE_LOWEST)?;
-        dbg!(&into_table);
+        let into_table = self.parse_object_table_name()?;
         if !matches!(
             into_table,
             ast::Expression::CompoundLiteral(_) | ast::Expression::Literal(_)
         ) {
             self.expected(
                 "expected compound literal or literal for table after INTO keyword",
-                &self.peek_token,
+                &self.current_token,
             )?;
         }
+        self.next_token();
 
         let column_list = self.parse_expression(PRECEDENCE_LOWEST)?;
         let columns = match column_list {
             ast::Expression::ExpressionList(l) => l,
             _ => {
-                self.expected("expected expression list of columns after table", &self.peek_token)?;
+                self.expected(
+                    "expected expression list of columns after table",
+                    &self.current_token,
+                )?;
                 unreachable!();
             }
         };
@@ -442,18 +445,17 @@ impl<'a> Parser<'a> {
         self.expect_kind(Kind::Keyword(Keyword::VALUES), &self.peek_token)?;
         self.next_token();
 
-        // check the values
-        self.expect_many_kind(
-            &[Kind::Ident, Kind::Number, Kind::LocalVariable],
-            &self.peek_token,
-        )?;
+        // skip past the VALUES keyword
+        self.expect_kind(Kind::LeftParen, &self.peek_token)?;
+        self.next_token();
+        // skip past the left paren
         self.next_token();
 
         // get the columns to select
         let expression = self.parse_expression(PRECEDENCE_LOWEST)?;
         let mut values: Vec<ast::Expression> = vec![expression];
 
-        while !self.peek_token_is(Kind::Comma) {
+        while self.peek_token_is(Kind::Comma) {
             self.next_token();
 
             self.expect_many_kind(
@@ -467,12 +469,36 @@ impl<'a> Parser<'a> {
             values.push(expression);
         }
 
+        self.expect_kind(Kind::RightParen, &self.peek_token)?;
+        self.next_token();
+
         Ok(ast::InsertStatement {
             top,
             table: into_table,
             columns,
             values,
         })
+    }
+
+    fn parse_object_table_name(&mut self) -> Result<ast::Expression, String> {
+        // check if the next token is a dot
+        if self.peek_token_is(Kind::Period) {
+            let mut idents = vec![self.current_token.clone()];
+            while self.peek_token_is(Kind::Period) {
+                // skip to the dot
+                self.next_token();
+
+                self.expect_kind(Kind::Ident, &self.peek_token)?;
+                self.next_token();
+
+                idents.push(self.current_token.clone());
+            }
+
+            return Ok(ast::Expression::CompoundLiteral(idents));
+        } else {
+            let ident = self.current_token.clone();
+            return Ok(ast::Expression::Literal(ident));
+        }
     }
 
     fn parse_delete_statement(&mut self) -> Result<ast::DeleteStatement, String> {
@@ -510,10 +536,6 @@ impl<'a> Parser<'a> {
 
         // go to the INTO keyword
         self.expect_kind(Kind::Keyword(Keyword::FROM), &self.peek_token)?;
-        self.next_token();
-
-        // check if the next token is an identifier
-        self.expect_kind(Kind::Ident, &self.peek_token)?;
         self.next_token();
 
         let table = self.parse_table_arg()?;
@@ -654,19 +676,56 @@ impl<'a> Parser<'a> {
         self.expect_kind(Kind::Ident, &self.peek_token)?;
         self.next_token();
 
-        let column = self.parse_expression(PRECEDENCE_LOWEST)?;
-        self.expect_kind(Kind::Equal, &self.peek_token)?;
-        // go to the equal sign
-        self.next_token();
-        self.next_token();
+        let column;
+        let value;
+        let op;
+        match self.parse_expression(PRECEDENCE_LOWEST)? {
+            ast::Expression::Binary {
+                left,
+                operator,
+                right,
+            } => {
+                column = *left;
+                value = *right;
+                op = operator;
+            }
+            _ => {
+                self.expected(
+                    "expected binary expression where you set a column",
+                    &self.current_token,
+                )?;
+                unreachable!()
+            }
+        };
 
-        self.expect_many_kind(
-            &[Kind::Number, Kind::Ident, Kind::LocalVariable],
-            &self.current_token,
-        )?;
-        let value = self.parse_expression(PRECEDENCE_LOWEST)?;
-        if !matches!(value, ast::Expression::Literal(_)) {
-            return Err(self.expected_err("literal value", &self.current_token));
+        if !matches!(&column, ast::Expression::Literal(t) if matches!(t.kind(), Kind::Ident | Kind::LocalVariable))
+        {
+            self.expected("expected identifier for column name", &self.current_token)?;
+            unreachable!()
+        }
+        // check valid operators
+        self.expect_kind(Kind::Equal, &op)?;
+        match &value {
+            ast::Expression::Literal(t) => {
+                self.expect_many_kind(
+                    &[
+                        Kind::Number,
+                        Kind::Ident,
+                        Kind::LocalVariable,
+                        Kind::Keyword(Keyword::NULL),
+                        Kind::Keyword(Keyword::DEFAULT),
+                    ],
+                    t,
+                )?;
+            }
+            ast::Expression::Subquery(s) => {
+                if s.columns.len() != 1 {
+                    self.expected("expected subquery with one column", &self.current_token)?;
+                }
+            }
+            _ => {
+                self.expected("expected literal for column name", &self.current_token)?;
+            }
         }
 
         let mut update_columns = vec![ast::UpdateSet { column, value }];
@@ -675,31 +734,61 @@ impl<'a> Parser<'a> {
             // go to the COMMA
             self.next_token();
 
-            self.expect_many_kind(
-                &[Kind::Ident, Kind::Number, Kind::LocalVariable],
-                &self.peek_token,
-            )?;
             // skip the COMMA
             self.next_token();
 
-            let column = self.parse_expression(PRECEDENCE_LOWEST)?;
-            if !matches!(column, ast::Expression::Literal(_)) {
-                return Err(self.expected_err("literal value", &self.current_token));
+            let column;
+            let value;
+            let op;
+            match self.parse_expression(PRECEDENCE_LOWEST)? {
+                ast::Expression::Binary {
+                    left,
+                    operator,
+                    right,
+                } => {
+                    column = *left;
+                    value = *right;
+                    op = operator;
+                }
+                _ => {
+                    self.expected(
+                        "expected binary expression where you set a column",
+                        &self.current_token,
+                    )?;
+                    unreachable!()
+                }
+            };
+
+            if !matches!(&column, ast::Expression::Literal(t) if matches!(t.kind(), Kind::Ident | Kind::LocalVariable))
+            {
+                self.expected("expected identifier for column name", &self.current_token)?;
+                unreachable!()
+            }
+            // check valid operators
+            self.expect_kind(Kind::Equal, &op)?;
+            match &value {
+                ast::Expression::Literal(t) => {
+                    self.expect_many_kind(
+                        &[
+                            Kind::Number,
+                            Kind::Ident,
+                            Kind::LocalVariable,
+                            Kind::Keyword(Keyword::NULL),
+                            Kind::Keyword(Keyword::DEFAULT),
+                        ],
+                        t,
+                    )?;
+                }
+                ast::Expression::Subquery(s) => {
+                    if s.columns.len() != 1 {
+                        self.expected("expected subquery with one column", &self.current_token)?;
+                    }
+                }
+                _ => {
+                    self.expected("expected literal for column name", &self.current_token)?;
+                }
             }
 
-            self.expect_kind(Kind::Equal, &self.peek_token)?;
-            // go to the equal sign
-            self.next_token();
-            self.next_token();
-
-            self.expect_many_kind(
-                &[Kind::Number, Kind::Ident, Kind::LocalVariable],
-                &self.current_token,
-            )?;
-            let value = self.parse_expression(PRECEDENCE_LOWEST)?;
-            if !matches!(value, ast::Expression::Literal(_)) {
-                return Err(self.expected_err("literal value", &self.current_token));
-            }
             update_columns.push(ast::UpdateSet { column, value });
         }
 
