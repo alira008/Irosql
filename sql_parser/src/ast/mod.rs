@@ -27,14 +27,17 @@ pub struct ProcedureParameter {
 #[derive(Debug, PartialEq, Clone)]
 pub enum CommonTableExpressionStatement {
     Select(SelectStatement),
-    Insert(SelectStatement),
-    Update(SelectStatement),
-    Delete(SelectStatement),
+    Insert(InsertStatement),
+    Update(UpdateStatement),
+    Delete(DeleteStatement),
 }
 
 #[derive(Debug, PartialEq, Clone)]
 pub enum Statement {
     Select(SelectStatement),
+    Insert(InsertStatement),
+    Update(UpdateStatement),
+    Delete(DeleteStatement),
     CTE {
         ctes: Vec<CommonTableExpression>,
         statement: CommonTableExpressionStatement,
@@ -172,6 +175,36 @@ pub enum SelectItem {
         as_token: bool,
         alias: String,
     },
+}
+
+#[derive(Debug, PartialEq, Clone)]
+pub struct InsertStatement {
+    pub top: Option<TopArg>,
+    pub table: Expression,
+    pub columns: Vec<Expression>,
+    pub values: Vec<Expression>,
+}
+
+#[derive(Debug, PartialEq, Clone)]
+pub struct UpdateStatement {
+    pub top: Option<TopArg>,
+    pub table: Expression,
+    pub update_columns: Vec<UpdateSet>,
+    pub from: Option<TableArg>,
+    pub where_clause: Option<Expression>,
+}
+
+#[derive(Debug, PartialEq, Clone)]
+pub struct UpdateSet {
+    pub column: Expression,
+    pub value: Expression,
+}
+
+#[derive(Debug, PartialEq, Clone)]
+pub struct DeleteStatement {
+    pub top: Option<TopArg>,
+    pub table: TableArg,
+    pub where_clause: Option<Expression>,
 }
 
 #[derive(Debug, PartialEq, Clone, Default)]
@@ -348,9 +381,9 @@ impl fmt::Display for CommonTableExpressionStatement {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match &self {
             CommonTableExpressionStatement::Select(select) => write!(f, "{}", select),
-            CommonTableExpressionStatement::Insert(_) => todo!(),
-            CommonTableExpressionStatement::Update(_) => todo!(),
-            CommonTableExpressionStatement::Delete(_) => todo!(),
+            CommonTableExpressionStatement::Insert(insert) => write!(f, "{}", insert),
+            CommonTableExpressionStatement::Update(update) => write!(f, "{}", update),
+            CommonTableExpressionStatement::Delete(delete) => write!(f, "{}", delete),
         }
     }
 }
@@ -377,6 +410,9 @@ impl fmt::Display for Statement {
                 write!(f, "{} {}", keyword, procedure_name)?;
                 display_list_comma_separated(parameters, f)
             }
+            Statement::Insert(insert) => write!(f, "{}", insert),
+            Statement::Update(update) => write!(f, "{}", update),
+            Statement::Delete(delete) => write!(f, "{}", delete),
         }
     }
 }
@@ -564,6 +600,72 @@ impl fmt::Display for SelectItem {
                 Ok(())
             }
         }
+    }
+}
+
+impl fmt::Display for InsertStatement {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "INSERT ")?;
+        if let Some(top) = &self.top {
+            write!(f, "{} ", top)?;
+        }
+        write!(f, "INTO {} ", self.table)?;
+        if !self.columns.is_empty() {
+            write!(f, "(")?;
+            display_list_comma_separated(&self.columns, f)?;
+            write!(f, ") ")?;
+        }
+        write!(f, "VALUES (")?;
+        display_list_comma_separated(&self.values, f)?;
+        write!(f, ") ")
+    }
+}
+
+impl fmt::Display for UpdateSet {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{} = {}", self.column, self.value)
+    }
+}
+
+impl fmt::Display for DeleteStatement {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "DELETE ")?;
+        if let Some(top) = &self.top {
+            write!(f, "{} ", top)?;
+        }
+        write!(f, "FROM {} ", self.table)?;
+        if let Some(where_clause) = &self.where_clause {
+            write!(f, " WHERE {}", where_clause)?;
+        }
+
+        Ok(())
+    }
+}
+
+impl fmt::Display for UpdateStatement {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "UPDATE ")?;
+        if let Some(top) = &self.top {
+            write!(f, "{} ", top)?;
+        }
+        write!(f, "{} ", self.table)?;
+        f.write_str("SET ")?;
+
+        if !self.update_columns.is_empty() {
+            display_list_comma_separated(&self.update_columns, f)?;
+        }
+
+        // FROM
+        if let Some(from_table) = &self.from {
+            write!(f, " FROM {}", from_table)?;
+        }
+
+        // WHERE
+        if let Some(where_clause) = &self.where_clause {
+            write!(f, " WHERE {}", where_clause)?;
+        }
+
+        Ok(())
     }
 }
 

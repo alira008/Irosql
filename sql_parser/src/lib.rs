@@ -70,6 +70,15 @@ impl<'a> Parser<'a> {
                 Keyword::SELECT => {
                     return Ok(ast::Statement::Select(self.parse_select_statement()?))
                 }
+                Keyword::INSERT => {
+                    return Ok(ast::Statement::Insert(self.parse_insert_statement()?))
+                }
+                Keyword::UPDATE => {
+                    return Ok(ast::Statement::Update(self.parse_update_statement()?))
+                }
+                Keyword::DELETE => {
+                    return Ok(ast::Statement::Delete(self.parse_delete_statement()?))
+                }
                 Keyword::WITH => return self.parse_cte_statement(),
                 Keyword::DECLARE => return self.parse_declare_statement(),
                 Keyword::SET => return self.parse_set_local_variable_statement(),
@@ -345,19 +354,19 @@ impl<'a> Parser<'a> {
                 statement: CommonTableExpressionStatement::Select(select_statement),
             });
         } else if self.current_token_is(Kind::Keyword(Keyword::INSERT)) {
-            let insert_statement = self.parse_select_statement()?;
+            let insert_statement = self.parse_insert_statement()?;
             return Ok(ast::Statement::CTE {
                 ctes,
                 statement: CommonTableExpressionStatement::Insert(insert_statement),
             });
         } else if self.current_token_is(Kind::Keyword(Keyword::UPDATE)) {
-            let update_statement = self.parse_select_statement()?;
+            let update_statement = self.parse_update_statement()?;
             return Ok(ast::Statement::CTE {
                 ctes,
                 statement: CommonTableExpressionStatement::Update(update_statement),
             });
         } else if self.current_token_is(Kind::Keyword(Keyword::DELETE)) {
-            let delete_statement = self.parse_select_statement()?;
+            let delete_statement = self.parse_delete_statement()?;
             return Ok(ast::Statement::CTE {
                 ctes,
                 statement: CommonTableExpressionStatement::Delete(delete_statement),
@@ -365,6 +374,336 @@ impl<'a> Parser<'a> {
         } else {
             unreachable!();
         }
+    }
+
+    fn parse_insert_statement(&mut self) -> Result<ast::InsertStatement, String> {
+        let mut top = None;
+        if self.peek_token_is(Kind::Keyword(Keyword::TOP)) {
+            self.next_token();
+
+            // skip TOP keyword
+            self.next_token();
+
+            let expression = self.parse_expression(PRECEDENCE_LOWEST)?;
+            // check if the next token is PERCENT
+            let mut is_percent = false;
+            if self.peek_token_is(Kind::Keyword(Keyword::PERCENT)) {
+                self.next_token();
+                is_percent = true;
+            }
+
+            // check if the next token is WITH TIES
+            let mut is_with_ties = false;
+            if self.peek_token_is(Kind::Keyword(Keyword::WITH)) {
+                self.next_token();
+
+                self.expect_kind(Kind::Keyword(Keyword::TIES), &self.peek_token)?;
+                self.next_token();
+                is_with_ties = true;
+            }
+
+            top = Some(ast::TopArg {
+                with_ties: is_with_ties,
+                percent: is_percent,
+                quantity: expression,
+            });
+        }
+
+        // go to the INTO keyword
+        self.expect_kind(Kind::Keyword(Keyword::INTO), &self.peek_token)?;
+        self.next_token();
+
+        // check if the next token is an identifier
+        self.expect_kind(Kind::Ident, &self.peek_token)?;
+        self.next_token();
+
+        let into_table = self.parse_expression(PRECEDENCE_LOWEST)?;
+        dbg!(&into_table);
+        if !matches!(
+            into_table,
+            ast::Expression::CompoundLiteral(_) | ast::Expression::Literal(_)
+        ) {
+            self.expected(
+                "expected compound literal or literal for table after INTO keyword",
+                &self.peek_token,
+            )?;
+        }
+
+        let column_list = self.parse_expression(PRECEDENCE_LOWEST)?;
+        let columns = match column_list {
+            ast::Expression::ExpressionList(l) => l,
+            _ => {
+                self.expected("expected expression list of columns after table", &self.peek_token)?;
+                unreachable!();
+            }
+        };
+
+        // go to the VALUES keyword
+        self.expect_kind(Kind::Keyword(Keyword::VALUES), &self.peek_token)?;
+        self.next_token();
+
+        // check the values
+        self.expect_many_kind(
+            &[Kind::Ident, Kind::Number, Kind::LocalVariable],
+            &self.peek_token,
+        )?;
+        self.next_token();
+
+        // get the columns to select
+        let expression = self.parse_expression(PRECEDENCE_LOWEST)?;
+        let mut values: Vec<ast::Expression> = vec![expression];
+
+        while !self.peek_token_is(Kind::Comma) {
+            self.next_token();
+
+            self.expect_many_kind(
+                &[Kind::Ident, Kind::Number, Kind::LocalVariable],
+                &self.peek_token,
+            )?;
+            self.next_token();
+
+            // parse the expression
+            let expression = self.parse_expression(PRECEDENCE_LOWEST)?;
+            values.push(expression);
+        }
+
+        Ok(ast::InsertStatement {
+            top,
+            table: into_table,
+            columns,
+            values,
+        })
+    }
+
+    fn parse_delete_statement(&mut self) -> Result<ast::DeleteStatement, String> {
+        let mut top = None;
+        if self.peek_token_is(Kind::Keyword(Keyword::TOP)) {
+            self.next_token();
+
+            // skip TOP keyword
+            self.next_token();
+
+            let expression = self.parse_expression(PRECEDENCE_LOWEST)?;
+            // check if the next token is PERCENT
+            let mut is_percent = false;
+            if self.peek_token_is(Kind::Keyword(Keyword::PERCENT)) {
+                self.next_token();
+                is_percent = true;
+            }
+
+            // check if the next token is WITH TIES
+            let mut is_with_ties = false;
+            if self.peek_token_is(Kind::Keyword(Keyword::WITH)) {
+                self.next_token();
+
+                self.expect_kind(Kind::Keyword(Keyword::TIES), &self.peek_token)?;
+                self.next_token();
+                is_with_ties = true;
+            }
+
+            top = Some(ast::TopArg {
+                with_ties: is_with_ties,
+                percent: is_percent,
+                quantity: expression,
+            });
+        }
+
+        // go to the INTO keyword
+        self.expect_kind(Kind::Keyword(Keyword::FROM), &self.peek_token)?;
+        self.next_token();
+
+        // check if the next token is an identifier
+        self.expect_kind(Kind::Ident, &self.peek_token)?;
+        self.next_token();
+
+        let table = self.parse_table_arg()?;
+
+        // check if we have any where clause
+        let mut where_clause = None;
+        if self.peek_token_is(Kind::Keyword(Keyword::WHERE)) {
+            // skip the WHERE keyword
+            self.next_token();
+            self.next_token();
+
+            let expression = self.parse_expression(PRECEDENCE_LOWEST)?;
+            if !matches!(
+                expression,
+                ast::Expression::Binary { .. }
+                    | ast::Expression::Between { .. }
+                    | ast::Expression::Unary { .. }
+                    | ast::Expression::Any { .. }
+                    | ast::Expression::All { .. }
+                    | ast::Expression::Some { .. }
+                    | ast::Expression::InList { .. }
+            ) {
+                self.expected(
+                    "expected expression after WHERE keyword",
+                    &self.current_token,
+                )?;
+            }
+
+            where_clause = Some(expression);
+        }
+
+        Ok(ast::DeleteStatement {
+            top,
+            table,
+            where_clause,
+        })
+    }
+
+    fn parse_update_statement(&mut self) -> Result<ast::UpdateStatement, String> {
+        let mut top = None;
+        if self.peek_token_is(Kind::Keyword(Keyword::TOP)) {
+            self.next_token();
+
+            // skip TOP keyword
+            self.next_token();
+
+            let expression = self.parse_expression(PRECEDENCE_LOWEST)?;
+            // check if the next token is PERCENT
+            let mut is_percent = false;
+            if self.peek_token_is(Kind::Keyword(Keyword::PERCENT)) {
+                self.next_token();
+                is_percent = true;
+            }
+
+            // check if the next token is WITH TIES
+            let mut is_with_ties = false;
+            if self.peek_token_is(Kind::Keyword(Keyword::WITH)) {
+                self.next_token();
+
+                self.expect_kind(Kind::Keyword(Keyword::TIES), &self.peek_token)?;
+                self.next_token();
+                is_with_ties = true;
+            }
+
+            top = Some(ast::TopArg {
+                with_ties: is_with_ties,
+                percent: is_percent,
+                quantity: expression,
+            });
+        }
+
+        // check if the next token is an identifier
+        self.expect_kind(Kind::Ident, &self.peek_token)?;
+        self.next_token();
+
+        let table = self.parse_expression(PRECEDENCE_LOWEST)?;
+        if !matches!(
+            table,
+            ast::Expression::CompoundLiteral(_) | ast::Expression::Literal(_)
+        ) {
+            self.expected(
+                "expected compound literal or literal for table after INTO keyword",
+                &self.peek_token,
+            )?;
+        }
+
+        // go to the SET keyword
+        self.expect_kind(Kind::Keyword(Keyword::SET), &self.peek_token)?;
+        self.next_token();
+
+        let update_columns = self.parse_updating_columns()?;
+
+        let mut from = None;
+        if self.peek_token_is(Kind::Keyword(Keyword::FROM)) {
+            // go to the FROM keyword
+            self.next_token();
+            from = Some(self.parse_table_arg()?);
+        }
+
+        // check if we have any where clause
+        let mut where_clause = None;
+        if self.peek_token_is(Kind::Keyword(Keyword::WHERE)) {
+            // skip the WHERE keyword
+            self.next_token();
+            self.next_token();
+
+            let expression = self.parse_expression(PRECEDENCE_LOWEST)?;
+            if !matches!(
+                expression,
+                ast::Expression::Binary { .. }
+                    | ast::Expression::Between { .. }
+                    | ast::Expression::Unary { .. }
+                    | ast::Expression::Any { .. }
+                    | ast::Expression::All { .. }
+                    | ast::Expression::Some { .. }
+                    | ast::Expression::InList { .. }
+            ) {
+                self.expected(
+                    "expected expression after WHERE keyword",
+                    &self.current_token,
+                )?;
+            }
+
+            where_clause = Some(expression);
+        }
+
+        Ok(ast::UpdateStatement {
+            top,
+            table,
+            update_columns,
+            from,
+            where_clause,
+        })
+    }
+
+    fn parse_updating_columns(&mut self) -> Result<Vec<ast::UpdateSet>, String> {
+        // check if the next token is an identifier
+        self.expect_kind(Kind::Ident, &self.peek_token)?;
+        self.next_token();
+
+        let column = self.parse_expression(PRECEDENCE_LOWEST)?;
+        self.expect_kind(Kind::Equal, &self.peek_token)?;
+        // go to the equal sign
+        self.next_token();
+        self.next_token();
+
+        self.expect_many_kind(
+            &[Kind::Number, Kind::Ident, Kind::LocalVariable],
+            &self.current_token,
+        )?;
+        let value = self.parse_expression(PRECEDENCE_LOWEST)?;
+        if !matches!(value, ast::Expression::Literal(_)) {
+            return Err(self.expected_err("literal value", &self.current_token));
+        }
+
+        let mut update_columns = vec![ast::UpdateSet { column, value }];
+
+        while self.peek_token_is(Kind::Comma) {
+            // go to the COMMA
+            self.next_token();
+
+            self.expect_many_kind(
+                &[Kind::Ident, Kind::Number, Kind::LocalVariable],
+                &self.peek_token,
+            )?;
+            // skip the COMMA
+            self.next_token();
+
+            let column = self.parse_expression(PRECEDENCE_LOWEST)?;
+            if !matches!(column, ast::Expression::Literal(_)) {
+                return Err(self.expected_err("literal value", &self.current_token));
+            }
+
+            self.expect_kind(Kind::Equal, &self.peek_token)?;
+            // go to the equal sign
+            self.next_token();
+            self.next_token();
+
+            self.expect_many_kind(
+                &[Kind::Number, Kind::Ident, Kind::LocalVariable],
+                &self.current_token,
+            )?;
+            let value = self.parse_expression(PRECEDENCE_LOWEST)?;
+            if !matches!(value, ast::Expression::Literal(_)) {
+                return Err(self.expected_err("literal value", &self.current_token));
+            }
+            update_columns.push(ast::UpdateSet { column, value });
+        }
+
+        Ok(update_columns)
     }
 
     fn parse_select_statement(&mut self) -> Result<ast::SelectStatement, String> {

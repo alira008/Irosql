@@ -127,6 +127,61 @@ impl Visitor for Formatter {
         self.visit_select_fetch(&query.fetch);
     }
 
+    fn visit_insert_query(&mut self, query: &sql_parser::ast::InsertStatement) {
+        self.print_keyword("INSERT ");
+        self.visit_select_top_argument(&query.top);
+        self.print_keyword("INTO ");
+        self.visit_expression(&query.table);
+        self.print_keyword("( ");
+        for (i, column) in query.columns.iter().enumerate() {
+            if i > 0 {
+                self.print_select_column_comma();
+            }
+            self.visit_expression(column);
+        }
+        self.print_keyword(") ");
+        self.print_keyword("VALUES ");
+        self.print_keyword("( ");
+        for (i, column) in query.values.iter().enumerate() {
+            if i > 0 {
+                self.print_select_column_comma();
+            }
+            self.visit_expression(column);
+        }
+        self.print_keyword(") ");
+    }
+
+    fn visit_delete_query(&mut self, query: &sql_parser::ast::DeleteStatement) {
+        self.print_keyword("DELETE ");
+        self.visit_select_top_argument(&query.top);
+        self.visit_select_table(&Some(query.table.clone()));
+        self.visit_select_where_clause(&query.where_clause);
+    }
+
+    fn visit_update_query(&mut self, query: &sql_parser::ast::UpdateStatement) {
+        self.print_keyword("UPDATE ");
+        self.visit_select_top_argument(&query.top);
+        self.visit_expression(&query.table);
+        self.print_keyword("SET ");
+        for (i, update_set) in query.update_columns.iter().enumerate() {
+            if i > 0 {
+                self.print_select_column_comma();
+            }
+            self.visit_update_set(update_set);
+        }
+        if query.from.is_some() {
+            self.print_keyword("FROM ");
+            self.visit_select_table(&query.from);
+        }
+        self.visit_select_where_clause(&query.where_clause);
+    }
+
+    fn visit_update_set(&mut self, update_set: &sql_parser::ast::UpdateSet) {
+        self.visit_expression(&update_set.column);
+        self.print_keyword(" = ");
+        self.visit_expression(&update_set.column);
+    }
+
     fn visit_select_top_argument(&mut self, top: &Option<sql_parser::ast::TopArg>) {
         if let Some(top) = top {
             self.print_keyword("TOP ");
@@ -610,9 +665,14 @@ impl Visitor for Formatter {
         }
     }
 
-    fn visit_common_table_expression_statement(&mut self, cte_statement: &sql_parser::ast::CommonTableExpressionStatement) {
+    fn visit_common_table_expression_statement(
+        &mut self,
+        cte_statement: &sql_parser::ast::CommonTableExpressionStatement,
+    ) {
         match cte_statement {
-            sql_parser::ast::CommonTableExpressionStatement::Select(select) => self.visit_select_query(select),
+            sql_parser::ast::CommonTableExpressionStatement::Select(select) => {
+                self.visit_select_query(select)
+            }
             sql_parser::ast::CommonTableExpressionStatement::Insert(_) => todo!(),
             sql_parser::ast::CommonTableExpressionStatement::Update(_) => todo!(),
             sql_parser::ast::CommonTableExpressionStatement::Delete(_) => todo!(),

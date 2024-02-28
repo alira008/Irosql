@@ -2,7 +2,7 @@ use crate::{
     ast::{
         CommonTableExpression, Expression, FetchArg, IntoArg, Join, JoinType, NextOrFirst,
         OffsetArg, OrderByArg, OverClause, Query, RowOrRows, RowsOrRange, SelectItem,
-        SelectStatement, Statement, TableArg, TableSource, TopArg, WindowFrame, WindowFrameBound, DataType, LocalVariable, ExecOrExecute, ProcedureParameter, CommonTableExpressionStatement,
+        SelectStatement, Statement, TableArg, TableSource, TopArg, WindowFrame, WindowFrameBound, DataType, LocalVariable, ExecOrExecute, ProcedureParameter, CommonTableExpressionStatement, InsertStatement, UpdateStatement, DeleteStatement, UpdateSet,
     },
     token::Token,
 };
@@ -252,6 +252,10 @@ pub trait Visitor {
     fn visit_set_local_variable_statement(&mut self, statement: &Statement);
     fn visit_execute_statement(&mut self, statement: &Statement);
     fn visit_exec_parameter(&mut self, parameter: &ProcedureParameter);
+    fn visit_insert_query(&mut self, query: &InsertStatement);
+    fn visit_update_query(&mut self, query: &UpdateStatement);
+    fn visit_delete_query(&mut self, query: &DeleteStatement);
+    fn visit_update_set(&mut self, update_set: &UpdateSet);
 }
 
 pub fn walk_query<V: Visitor + ?Sized>(visitor: &mut V, query: &Query) {
@@ -313,9 +317,24 @@ pub fn walk_statement<V: Visitor + ?Sized>(visitor: &mut V, statement: &Statemen
         Statement::Declare (vars) => visitor.visit_declare_statement(vars),
         Statement::SetLocalVariable {..} => visitor.visit_set_local_variable_statement(statement),
         Statement::Execute {..} => visitor.visit_execute_statement(statement),
+        Statement::Insert(insert) => visitor.visit_insert_query(insert),
+        Statement::Update(update) => visitor.visit_update_query(update),
+        Statement::Delete(delete) => visitor.visit_delete_query(delete),
     }
 }
 
 pub fn walk_select_query<V: Visitor + ?Sized>(visitor: &mut V, statement: &SelectStatement) {
     visitor.visit_select_query(statement);
+}
+
+pub fn walk_insert_query<V: Visitor + ?Sized>(visitor: &mut V, statement: &InsertStatement) {
+    visitor.visit_insert_query(statement);
+}
+
+pub fn walk_delete_query<V: Visitor + ?Sized>(visitor: &mut V, statement: &DeleteStatement) {
+    visitor.visit_delete_query(statement);
+}
+
+pub fn walk_update_query<V: Visitor + ?Sized>(visitor: &mut V, statement: &UpdateStatement) {
+    visitor.visit_update_query(statement);
 }
