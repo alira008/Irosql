@@ -102,7 +102,7 @@ Options:
         - [x] with identifiers
 
 - [x] CTEs
-- [ ] Insert Queries
+- [x] Insert Queries
 - [ ] Bulk Insert Queries
-- [ ] Delete Queries
-- [ ] Update Queries
+- [x] Delete Queries
+- [x] Update Queries
