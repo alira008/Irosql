@@ -5,6 +5,22 @@ use core::fmt;
 pub use data_type::DataType;
 pub use data_type::NumericSize;
 
+#[derive(Debug, PartialEq, Clone, Copy)]
+pub struct Span {
+    line: usize,
+    column: usize,
+}
+
+impl Span {
+    pub fn new(line: usize, column: usize) -> Self {
+        Self { line, column }
+    }
+}
+
+pub enum Symbol {
+    LeftParen {start: Span, end: Span}
+}
+
 #[derive(Debug, PartialEq, Clone)]
 pub struct CommonTableExpression {
     pub name: Expression,

@@ -1,3 +1,5 @@
+use core::fmt;
+
 macro_rules! define_keyword {
     ($ident:ident = $string_keyword:expr) => {
         pub const $ident: &'static str = $string_keyword;
@@ -11,7 +13,7 @@ macro_rules! define_keyword {
 
 macro_rules! define_keywords {
         ($($ident:ident $(= $string_keyword:expr)?),*) => {
-            #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
+            #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, Ord, PartialOrd)]
             #[allow(non_camel_case_types)]
             pub enum Keyword {
                 $($ident),*
@@ -228,6 +230,16 @@ pub fn lookup_keyword(keyword: &str) -> Option<Keyword> {
     match ALL_KEYWORDS.binary_search(&normalized_keyword.as_str()) {
         Ok(index) => Some(ALL_KEYWORDS_INDEX[index].clone()),
         Err(_) => None,
+    }
+}
+
+impl fmt::Display for Keyword {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        if let Ok(index) = ALL_KEYWORDS_INDEX.binary_search(self) {
+            write!(f, "{}", ALL_KEYWORDS[index])?;
+        }
+
+        Err(fmt::Error)
     }
 }
 
