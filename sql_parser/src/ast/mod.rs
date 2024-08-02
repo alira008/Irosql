@@ -8,13 +8,13 @@ pub use data_type::NumericSize;
 
 #[derive(Debug, PartialEq, Clone, Copy, Default)]
 pub struct Span {
-    line: usize,
-    column: usize,
+    start: u32,
+    end: u32,
 }
 
 impl Span {
-    pub fn new(line: usize, column: usize) -> Self {
-        Self { line, column }
+    pub fn new(start: u32, end: u32) -> Self {
+        Self { start, end }
     }
 }
 
@@ -35,18 +35,16 @@ impl Default for Symbol {
 #[derive(Debug, PartialEq, Clone)]
 pub enum KeywordDef {
     Single {
-        start: Span,
-        end: Span,
+        location: Span,
         keyword: keywords::Keyword,
     },
     Multi(Vec<keywords::Keyword>),
 }
 
 impl KeywordDef {
-    pub fn new_single(keyword_with_spans: (Span, keywords::Keyword, Span)) -> Self {
+    pub fn new_single(keyword_with_spans: (Span, keywords::Keyword)) -> Self {
         KeywordDef::Single {
-            start: keyword_with_spans.0,
-            end: keyword_with_spans.2,
+            location: keyword_with_spans.0,
             keyword: keyword_with_spans.1,
         }
     }
@@ -55,8 +53,7 @@ impl KeywordDef {
 impl Default for KeywordDef {
     fn default() -> Self {
         Self::Single {
-            start: Span::default(),
-            end: Span::default(),
+            location: Span::default(),
             keyword: keywords::Keyword::default(),
         }
     }

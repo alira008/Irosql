@@ -5,7 +5,8 @@ use crate::keywords;
 use crate::token_new::Token;
 
 pub type LexerResult<'a> = Result<SpannedToken<'a>, LexicalError>;
-pub type SpannedToken<'a> = (Span, Token<'a>, Span);
+pub type SpannedToken<'a> = (Span, Token<'a>);
+pub type SpannedKeyword = (Span, keywords::Keyword);
 
 #[derive(Debug, Clone)]
 pub struct Lexer<'a> {
@@ -14,8 +15,6 @@ pub struct Lexer<'a> {
     current_position: usize, // current position in input (points to current char)
     read_position: usize,    // current reading position in input (after current char)
     ch: Option<char>,        // current char under examination
-    line: usize,
-    column: usize,
 }
 
 impl<'a> Lexer<'a> {
@@ -26,8 +25,6 @@ impl<'a> Lexer<'a> {
             current_position: 0,
             read_position: 0,
             ch: None,
-            line: 1,
-            column: 0,
         };
         lexer.read_char();
         lexer
@@ -42,13 +39,6 @@ impl<'a> Lexer<'a> {
             self.ch = self.chars.next();
         } else {
             self.ch = None;
-        }
-
-        if self.ch == Some('\n') {
-            self.line += 1;
-            self.column = 1;
-        } else {
-            self.column += 1;
         }
 
         self.current_position = self.read_position;
@@ -163,7 +153,7 @@ impl<'a> Lexer<'a> {
     fn next_lex(&mut self) -> LexerResult<'a> {
         self.skip_whitespace();
 
-        let start = Span::new(self.line, self.column);
+        let start = self.current_position as u32;
         let token: Token<'_> = match self.ch {
             Some(ch) => match ch {
                 ',' => Token::Comma,
@@ -236,9 +226,9 @@ impl<'a> Lexer<'a> {
             None => Token::Eof,
         };
 
-        let end = Span::new(self.line, self.column);
+        let location = Span::new(start, self.current_position as u32);
         self.read_char();
-        Ok((start, token, end))
+        Ok((location, token))
     }
 }
 
@@ -249,7 +239,7 @@ impl<'a> Iterator for Lexer<'a> {
         let next_token = self.next_lex();
 
         match next_token {
-            Ok((_, token, _)) => {
+            Ok((_, token)) => {
                 if matches!(token, Token::Eof) {
                     None
                 } else {
@@ -272,7 +262,7 @@ mod tests {
         let lexer = Lexer::new(input);
         let mut tokens = Vec::new();
         for result in lexer {
-            let (_, token, _) = result.unwrap();
+            let (_, token) = result.unwrap();
             tokens.push(token);
         }
         let expected_tokens = vec![
@@ -293,7 +283,7 @@ mod tests {
         let lexer = Lexer::new(input);
         let mut tokens = Vec::new();
         for result in lexer {
-            let (_, token, _) = result.unwrap();
+            let (_, token) = result.unwrap();
             tokens.push(token);
         }
 
@@ -315,7 +305,7 @@ mod tests {
         let lexer = Lexer::new(input);
         let mut tokens = Vec::new();
         for result in lexer {
-            let (_, token, _) = result.unwrap();
+            let (_, token) = result.unwrap();
             tokens.push(token);
         }
 
@@ -338,7 +328,7 @@ mod tests {
         let lexer = Lexer::new(input);
         let mut tokens = Vec::new();
         for result in lexer {
-            let (_, token, _) = result.unwrap();
+            let (_, token) = result.unwrap();
             tokens.push(token);
         }
 
@@ -362,7 +352,7 @@ mod tests {
         let lexer = Lexer::new(input);
         let mut tokens = Vec::new();
         for result in lexer {
-            let (_, token, _) = result.unwrap();
+            let (_, token) = result.unwrap();
             tokens.push(token);
         }
 
