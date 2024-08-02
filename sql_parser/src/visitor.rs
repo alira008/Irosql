@@ -283,6 +283,13 @@ pub fn walk_expression<V: Visitor + ?Sized>(visitor: &mut V, e: &Expression) {
         Expression::ExpressionList(e) => visitor.visit_expression_list_expression(e),
         Expression::Function { .. } => visitor.visit_function_expression(e),
         Expression::Cast { .. } => visitor.visit_cast(e),
+        Expression::Identifier(_) => todo!(),
+        Expression::QuotedIdentifier(_) => todo!(),
+        Expression::StringLiteral(_) => todo!(),
+        Expression::NumberLiteral(_) => todo!(),
+        Expression::LocalVariable(_) => todo!(),
+        Expression::Compound(_) => todo!(),
+        Expression::Asterisk => todo!(),
     }
 }
 

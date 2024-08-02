@@ -1,9 +1,20 @@
 use crate::ast::{self, KeywordDef, Span};
 use crate::error::{parse_error, LexicalError, ParseError, ParseErrorType};
 use crate::keywords::Keyword;
-use crate::lexer_new::{Lexer, SpannedToken, SpannedKeyword};
+use crate::lexer_new::{Lexer, SpannedKeyword, SpannedToken};
 use crate::operator::{get_precedence, Precedence};
 use crate::token_new::Token;
+
+const SELECT_ITEM_TYPE: &'static [Token<'static>] = &[
+    Token::Identifier(""),
+    Token::QuotedIdentifier(""),
+    Token::NumberLiteral(""),
+    Token::LocalVariable(""),
+    Token::LeftParen,
+    Token::Asterisk,
+    Token::Minus,
+    Token::Plus,
+];
 
 #[derive(Debug, Clone)]
 pub struct Parser<'a> {
@@ -79,70 +90,202 @@ impl<'a> Parser<'a> {
         }
     }
 
-    fn maybe_current_token(&mut self, token: &Token) -> Option<SpannedToken> {
-        match self.current_token.take() {
+    fn maybe_token(&mut self, token: &Token, current: bool) -> Option<SpannedToken> {
+        let tok = if current {
+            self.current_token.take()
+        } else {
+            self.peek_token.take()
+        };
+        match tok {
             Some((s, t)) if t.shallow_eq_token(token) => {
-                self.advance();
-                Some((s, t))
-            }
-            t => {
-                self.current_token = t;
-                None
-            }
-        }
-    }
-
-    fn maybe_peek_token(&mut self, token: &Token) -> Option<SpannedToken> {
-        match self.peek_token.take() {
-            Some((s, t)) if t.shallow_eq_token(token) => {
-                self.advance();
-                self.advance();
-                Some((s, t))
-            }
-            t => {
-                self.peek_token = t;
-                None
-            }
-        }
-    }
-
-    fn maybe_current_token_many(&mut self, tokens: &[Token]) -> Option<SpannedToken> {
-        for token in tokens {
-            match self.current_token.take() {
-                Some((s, t)) if t.shallow_eq_token(token) => {
+                if current {
                     self.advance();
-                    return Some((s, t));
+                } else {
+                    self.advance();
+                    self.advance();
                 }
-                t => {
+                Some((s, t))
+            }
+            t => {
+                if current {
                     self.current_token = t;
-                }
-            }
-        }
-
-        None
-    }
-
-    fn maybe_peek_token_many(&mut self, tokens: &[Token]) -> Option<SpannedToken> {
-        for token in tokens {
-            match self.peek_token.take() {
-                Some((s, t)) if t.shallow_eq_token(token) => {
-                    self.advance();
-                    self.advance();
-                    return Some((s, t));
-                }
-                t => {
+                } else {
                     self.peek_token = t;
-                }
+                };
+                None
             }
         }
+    }
+
+    fn maybe_token_many(&mut self, tokens: &[Token], current: bool) -> Option<SpannedToken> {
+        for token in tokens {
+            if let Some(spanned_token) = self.maybe_token(token, current) {
+                Some(spanned_token);
+            }
+        }
+
         None
     }
 
-    fn maybe_current_keyword(&mut self, keyword: Keyword) -> Option<SpannedKeyword> {
-        match self.current_token.take() {
+    fn token_is_keyword(&mut self, keyword: &Keyword, current: bool) -> bool {
+        let compare_token = if current {
+            self.current_token
+        } else {
+            self.peek_token
+        };
+        if compare_token.is_some_and(|(_, t)| matches!(t, Token::Keyword(kw) if kw == *keyword)) {
+            return true;
+        }
+        false
+    }
+
+    fn token_is_any_keyword(&mut self, keywords: &[Keyword], current: bool) -> bool {
+        let compare_token = if current {
+            self.current_token
+        } else {
+            self.peek_token
+        };
+        // let ret_spanned_token;
+        for keyword in keywords {
+            if compare_token.is_some_and(|(_, t)| matches!(t, Token::Keyword(kw) if kw == *keyword))
+            {
+                return true;
+            }
+        }
+        false
+    }
+
+    fn token_is(&mut self, token: &Token, current: bool) -> bool {
+        let compare_token = if current {
+            self.current_token
+        } else {
+            self.peek_token
+        };
+        if compare_token.is_some_and(|(_, t)| t.shallow_eq_token(token)) {
+            return true;
+        }
+        false
+    }
+
+    fn token_is_any(&mut self, tokens: &[Token], current: bool) -> bool {
+        let compare_token = if current {
+            self.current_token
+        } else {
+            self.peek_token
+        };
+        // let ret_spanned_token;
+        for token in tokens {
+            if compare_token.is_some_and(|(_, t)| t.shallow_eq_token(token)) {
+                return true;
+            }
+        }
+        false
+    }
+
+    fn maybe_keyword(&mut self, keyword: Keyword, current: bool) -> Option<SpannedKeyword> {
+        let tok = if current {
+            self.current_token.take()
+        } else {
+            self.peek_token.take()
+        };
+        match tok {
             Some((s, Token::Keyword(k))) if k == keyword => {
-                self.advance();
+                if current {
+                    self.advance();
+                } else {
+                    self.advance();
+                    self.advance();
+                }
                 Some((s, keyword))
+            }
+            t => {
+                if current {
+                    self.current_token = t;
+                } else {
+                    self.peek_token = t;
+                };
+                None
+            }
+        }
+    }
+
+    fn expect_token(
+        &mut self,
+        expected_token: &Token,
+        current: bool,
+    ) -> Result<Span, ParseError<'a>> {
+        match self.maybe_token(expected_token, current) {
+            Some((s, _)) => Ok(s),
+            None => self.unexpected_token(vec![expected_token.to_string()], current),
+        }
+    }
+
+    fn expect_token_many(
+        &mut self,
+        expected_tokens: &[Token],
+        current: bool,
+    ) -> Result<Span, ParseError<'a>> {
+        match self.maybe_token_many(expected_tokens, current) {
+            Some((s, _)) => Ok(s),
+            None => self.unexpected_token(
+                expected_tokens.iter().map(|t| t.to_string()).collect(),
+                current,
+            ),
+        }
+    }
+
+    fn expect_keyword(
+        &mut self,
+        expected_keyword: Keyword,
+        current: bool,
+    ) -> Result<SpannedKeyword, ParseError<'a>> {
+        match self.maybe_keyword(expected_keyword, current) {
+            Some((s, k)) => Ok((s, k)),
+            None => self.unexpected_token(vec![expected_keyword.to_string()], current),
+        }
+    }
+
+    fn unexpected_token<A>(
+        &self,
+        expected: Vec<String>,
+        current: bool,
+    ) -> Result<A, ParseError<'a>> {
+        let tok = if current {
+            self.current_token
+        } else {
+            self.peek_token
+        };
+        match tok {
+            Some((_, t)) => parse_error(ParseErrorType::UnexpectedToken { token: t, expected }),
+            None => parse_error(ParseErrorType::UnrecognizedEof),
+        }
+    }
+
+    fn expect_identifier(&mut self, current: bool) -> Result<Span, ParseError<'a>> {
+        let spanned_tok = if current {
+            self.current_token
+        } else {
+            self.peek_token
+        };
+        if let Some((span, tok)) = spanned_tok {
+            if matches!(tok, Token::Identifier(..)) {
+                if current {
+                    self.advance();
+                } else {
+                    self.advance();
+                    self.advance();
+                };
+                return Ok(span);
+            }
+        }
+        self.unexpected_token(vec!["Identifier".to_string()], current)
+    }
+
+    fn maybe_identifier(&mut self) -> Option<(Span, &'a str)> {
+        match self.current_token.take() {
+            Some((s, Token::Identifier(val))) => {
+                self.advance();
+                Some((s, val))
             }
             t => {
                 self.current_token = t;
@@ -150,98 +293,6 @@ impl<'a> Parser<'a> {
             }
         }
     }
-
-    fn maybe_peek_keyword(&mut self, keyword: Keyword) -> Option<SpannedKeyword> {
-        match self.peek_token.take() {
-            Some((s, Token::Keyword(k))) if k == keyword => {
-                self.advance();
-                self.advance();
-                Some((s, keyword))
-            }
-            t => {
-                self.peek_token = t;
-                None
-            }
-        }
-    }
-
-    fn expect_peek_token(
-        &mut self,
-        expected_token: &Token,
-    ) -> Result<Span, ParseError<'a>> {
-        match self.maybe_peek_token(expected_token) {
-            Some((s, _)) => Ok(s),
-            None => self.unexpected_peek_token(vec![expected_token.to_string()]),
-        }
-    }
-
-    fn expect_current_token(
-        &mut self,
-        expected_token: &Token,
-    ) -> Result<Span, ParseError<'a>> {
-        match self.maybe_current_token(expected_token) {
-            Some((s, _)) => Ok(s),
-            None => self.unexpected_current_token(vec![expected_token.to_string()]),
-        }
-    }
-
-    fn expect_peek_token_many(
-        &mut self,
-        expected_tokens: &[Token],
-    ) -> Result<Span, ParseError<'a>> {
-        match self.maybe_peek_token_many(expected_tokens) {
-            Some((s, _)) => Ok(s),
-            None => {
-                self.unexpected_peek_token(expected_tokens.iter().map(|t| t.to_string()).collect())
-            }
-        }
-    }
-
-    fn expect_current_token_many(
-        &mut self,
-        expected_tokens: &[Token],
-    ) -> Result<Span, ParseError<'a>> {
-        match self.maybe_current_token_many(expected_tokens) {
-            Some((s, _)) => Ok(s),
-            None => self
-                .unexpected_current_token(expected_tokens.iter().map(|t| t.to_string()).collect()),
-        }
-    }
-
-    fn expect_peek_keyword(
-        &mut self,
-        expected_keyword: Keyword,
-    ) -> Result<SpannedKeyword, ParseError<'a>> {
-        match self.maybe_peek_keyword(expected_keyword) {
-            Some((s, k)) => Ok((s, k)),
-            None => self.unexpected_peek_token(vec![expected_keyword.to_string()]),
-        }
-    }
-
-    fn expect_current_keyword(
-        &mut self,
-        expected_keyword: Keyword,
-    ) -> Result<SpannedKeyword, ParseError<'a>> {
-        match self.maybe_current_keyword(expected_keyword) {
-            Some((s, k)) => Ok((s, k)),
-            None => self.unexpected_current_token(vec![expected_keyword.to_string()]),
-        }
-    }
-
-    fn unexpected_peek_token<A>(&mut self, expected: Vec<String>) -> Result<A, ParseError<'a>> {
-        match self.peek_token {
-            Some((_, t)) => parse_error(ParseErrorType::UnexpectedToken { token: t, expected }),
-            None => parse_error(ParseErrorType::UnrecognizedEof),
-        }
-    }
-
-    fn unexpected_current_token<A>(&mut self, expected: Vec<String>) -> Result<A, ParseError<'a>> {
-        match self.current_token {
-            Some((_, t)) => parse_error(ParseErrorType::UnexpectedToken { token: t, expected }),
-            None => parse_error(ParseErrorType::UnrecognizedEof),
-        }
-    }
-
 }
 
 impl<'a> Parser<'a> {
@@ -290,113 +341,241 @@ impl<'a> Parser<'a> {
     fn parse_select_statement(&mut self) -> Result<ast::SelectStatement, ParseError<'a>> {
         let mut select_statement = ast::SelectStatement::default();
 
-        let select_kw = self.expect_current_keyword(Keyword::SELECT)?;
+        let select_kw = self.expect_keyword(Keyword::SELECT, true)?;
         select_statement.select = KeywordDef::new_single(select_kw);
 
-        if let Some(kw) = self.maybe_current_keyword(Keyword::DISTINCT) {
+        if let Some(kw) = self.maybe_keyword(Keyword::DISTINCT, true) {
             select_statement.distinct = Some(KeywordDef::new_single(kw));
         }
 
-        if let Some(kw) = self.maybe_current_keyword(Keyword::ALL) {
+        if let Some(kw) = self.maybe_keyword(Keyword::ALL, true) {
             select_statement.all = Some(KeywordDef::new_single(kw));
+        }
+
+        select_statement.columns = self.parse_select_items()?;
+
+        if let Some(kw) = self.maybe_keyword(Keyword::FROM, true) {
+            let _ = self.parse_table_arg(KeywordDef::new_single(kw))?;
         }
 
         return Ok(select_statement);
     }
 
-    fn parse_select_items(&mut self) -> Result<Vec<ast::SelectItem>, String> {
+    fn parse_select_items(&mut self) -> Result<Vec<ast::SelectItem>, ParseError<'a>> {
         // check if the next token is an identifier
         // return an error if the next token is not an identifier or number
-        // self.expect_many_kind(
-        //     &[
-        //         Kind::Ident,
-        //         Kind::Number,
-        //         Kind::Asterisk,
-        //         Kind::LeftParen,
-        //         Kind::LocalVariable,
-        //     ],
-        //     &self.peek_token,
-        // )?;
-        //
-        // // get the columns to select
-        let columns: Vec<ast::SelectItem> = vec![];
-        // while let Some(token_w_span) = self.maybe_current_token_many(&[Token::Identifier("")]){
-        //
-        // }
-        // while !self.peek_token_is(Kind::Keyword(Keyword::FROM))
-        //     && !self.peek_token_is(Kind::Keyword(Keyword::INTO))
-        //     && !self.peek_token_is(Kind::Keyword(Keyword::WITH))
-        //     && !self.peek_token_is(Kind::Keyword(Keyword::EXEC))
-        //     && !self.peek_token_is(Kind::Keyword(Keyword::EXECUTE))
-        //     && !self.peek_token_is(Kind::Keyword(Keyword::DECLARE))
-        //     && !self.peek_token_is(Kind::Keyword(Keyword::SET))
-        //     && !self.peek_token_is(Kind::Eof)
-        // {
-        //     self.next_token();
-        //
-        //     if columns.len() > 0 {
-        //         // expect a COMMA before the next GROUP BY expression
-        //         self.expect_kind(Kind::Comma, &self.current_token)?;
-        //
-        //         // consume the COMMA
-        //         self.next_token();
-        //     }
-        //
-        //     // parse the expression
-        //     let expression = self.parse_expression(PRECEDENCE_LOWEST)?;
-        //
-        //     // check if it is a compounded identifier
-        //     // check if the next token is the keyword AS
-        //     let mut is_as = false;
-        //     if self.peek_token_is(Kind::Keyword(Keyword::AS)) {
-        //         // skip the AS keyword
-        //         self.next_token();
-        //         is_as = true;
-        //
-        //         if !self.peek_token_is(Kind::Ident) {
-        //             self.expected(
-        //                 "token to either be a quoted string or identifier after AS keyword",
-        //                 &self.peek_token,
-        //             )?;
-        //         }
-        //     }
-        //
-        //     if self.peek_token_is(Kind::Ident) {
-        //         self.next_token();
-        //
-        //         // check if expression was a wildcard
-        //         // add to the columns
-        //         if matches!(expression, ast::Expression::Literal(ref token) if token.kind() == Kind::Asterisk)
-        //         {
-        //             columns.push(ast::SelectItem::WildcardWithAlias {
-        //                 expression,
-        //                 as_token: is_as,
-        //                 alias: self.current_token.to_string(),
-        //             });
-        //         } else {
-        //             columns.push(ast::SelectItem::WithAlias {
-        //                 expression,
-        //                 as_token: is_as,
-        //                 alias: self.current_token.to_string(),
-        //             });
-        //         }
-        //     } else {
-        //         // add to the columns
-        //         // check if expression was a wildcard
-        //         if matches!(expression, ast::Expression::Literal(ref token) if token.kind() == Kind::Asterisk)
-        //         {
-        //             columns.push(ast::SelectItem::Wildcard);
-        //         } else {
-        //             columns.push(ast::SelectItem::Unnamed(expression));
-        //         }
-        //     }
-        // }
-        //
-        // if columns.len() == 0 {
-        //     self.expected("SELECT items in SELECT expression", &self.peek_token)?;
-        // }
+        // get the columns to select
+        let mut columns: Vec<ast::SelectItem> = vec![];
+        while self.token_is_any(SELECT_ITEM_TYPE, true) {
+            println!("current: {:#?}", self.current_token);
+            if !columns.is_empty() {
+                let _ = self.expect_token(&Token::Comma, true);
+            }
+
+            let expression = self.parse_expression(Precedence::Lowest)?;
+            match expression {
+                ast::Expression::Identifier(_)
+                | ast::Expression::QuotedIdentifier(_)
+                | ast::Expression::StringLiteral(_)
+                | ast::Expression::NumberLiteral(_)
+                | ast::Expression::LocalVariable(_)
+                | ast::Expression::Compound(_)
+                | ast::Expression::Asterisk => (),
+                _ => return self.unexpected_token(vec!["select items".to_string()], true),
+            }
+            println!("peek: {:#?}", self.peek_token);
+
+            if let Some(spanned_kw) = self.maybe_keyword(Keyword::AS, true) {
+                let as_keyword = ast::KeywordDef::new_single(spanned_kw);
+                if matches!(expression, ast::Expression::Asterisk) {
+                    columns.push(ast::SelectItem::Wildcard);
+                    let select_item = ast::SelectItem::WildcardWithAlias {
+                        expression,
+                        as_token: true,
+                        alias: "".to_string(),
+                    };
+                    columns.push(select_item);
+                } else {
+                    let select_item = ast::SelectItem::WithAlias {
+                        expression,
+                        as_token: true,
+                        alias: "".to_string(),
+                    };
+                    columns.push(select_item);
+                }
+            } else {
+                if matches!(expression, ast::Expression::Asterisk) {
+                    columns.push(ast::SelectItem::Wildcard);
+                } else {
+                    columns.push(ast::SelectItem::Unnamed(expression));
+                }
+            }
+
+            if !self.token_is(&Token::Comma, false) {
+                break;
+            }
+
+            self.advance();
+            self.advance();
+        }
+
+        if columns.is_empty() {
+            return parse_error(ParseErrorType::EmptySelectColumns);
+        }
 
         Ok(columns)
+    }
+
+    fn parse_compound_identifier(
+        &mut self,
+        expr: ast::Expression,
+    ) -> Result<Option<ast::Expression>, ParseError<'a>> {
+        if !self.token_is(&Token::Period, false) {
+            return Ok(None);
+        }
+
+        let mut compound = vec![expr];
+        // go to period
+        self.advance();
+        loop {
+            let new_expr;
+            if let Some((s, Token::Identifier(val))) =
+                self.maybe_token(&Token::Identifier(""), false)
+            {
+                new_expr = ast::Expression::Identifier(val.to_string());
+            } else if let Some((s, Token::QuotedIdentifier(val))) =
+                self.maybe_token(&Token::QuotedIdentifier(""), false)
+            {
+                new_expr = ast::Expression::QuotedIdentifier(val.to_string());
+            } else if let Some((s, _)) = self.maybe_token(&Token::Asterisk, false) {
+                new_expr = ast::Expression::Asterisk;
+                break;
+            } else {
+                return self.unexpected_token(vec!["Identifier".to_string()], false);
+            }
+
+            compound.push(new_expr);
+            if !self.token_is(&Token::Period, false) {
+                break;
+            }
+
+            self.advance();
+        }
+
+        let compound_expr = ast::Expression::Compound(compound);
+        Ok(Some(compound_expr))
+    }
+
+    fn parse_table_arg(&mut self, keyword: KeywordDef) -> Result<ast::TableArg, ParseError<'a>> {
+        let table_source = self.parse_table_source()?;
+        // check if we have joins
+
+        let mut joins = vec![];
+        if self.token_is_any_keyword(
+            &[Keyword::INNER, Keyword::LEFT, Keyword::RIGHT, Keyword::FULL],
+            false,
+        ) {
+            joins = self.parse_table_joins()?;
+        }
+
+        Ok(ast::TableArg {
+            from: keyword,
+            table: table_source,
+            joins,
+        })
+    }
+
+    fn parse_table_source(&mut self) -> Result<ast::TableSource, ParseError<'a>> {
+        let _ = self.expect_token_many(
+            &[
+                Token::Identifier(""),
+                Token::QuotedIdentifier(""),
+                Token::LocalVariable(""),
+                Token::LeftParen,
+            ],
+            true,
+        )?;
+
+        let expr = self.parse_expression(Precedence::Lowest)?;
+        match expr {
+            ast::Expression::Identifier(_)
+            | ast::Expression::QuotedIdentifier(_)
+            | ast::Expression::LocalVariable(_)|ast::Expression::Compound(_) => {
+                return Ok(ast::TableSource::Table {
+                    name: expr,
+                    is_as: false,
+                    alias: None,
+                })
+            }
+            _ => return self.unexpected_token(vec!["select items".to_string()], true),
+        }
+        self.unexpected_token(vec![], true)
+    }
+
+    fn parse_table_joins(&mut self) -> Result<Vec<ast::Join>, ParseError<'a>> {
+        self.unexpected_token(vec![], true)
+    }
+
+    fn parse_expression(
+        &mut self,
+        precedence: Precedence,
+    ) -> Result<ast::Expression, ParseError<'a>> {
+        // check if the current token is an identifier
+        // or if it is a prefix operator
+        let mut left_expression = self.parse_prefix_expression()?;
+
+        // parse the infix expression
+        while precedence < self.peek_precedence() {
+            // move to the next token
+            self.next_token();
+
+            left_expression = self.parse_infix_expression(left_expression)?;
+        }
+
+        Ok(left_expression)
+    }
+
+    fn parse_prefix_expression(&mut self) -> Result<ast::Expression, ParseError<'a>> {
+        let looking_at_current = true;
+        if self.token_is_any(&SELECT_ITEM_TYPE, looking_at_current) {
+            let mut expr = match self.current_token {
+                Some((s, Token::Identifier(val))) => ast::Expression::Identifier(val.to_string()),
+                Some((s, Token::QuotedIdentifier(val))) => {
+                    ast::Expression::QuotedIdentifier(val.to_string())
+                }
+                Some((s, Token::StringLiteral(val))) => {
+                    ast::Expression::StringLiteral(val.to_string())
+                }
+                Some((s, Token::NumberLiteral(val))) => {
+                    ast::Expression::NumberLiteral(val.to_string())
+                }
+                Some((s, Token::LocalVariable(val))) => {
+                    ast::Expression::LocalVariable(val.to_string())
+                }
+                Some((s, Token::Asterisk)) => ast::Expression::Asterisk,
+                _ => unreachable!(),
+            };
+
+            if self.token_is_any(&[Token::Identifier(""), Token::QuotedIdentifier("")], true) {
+                if let Some(compound) = self.parse_compound_identifier(expr.clone())? {
+                    expr = compound;
+                }
+            }
+
+            // self.advance();
+            return Ok(expr);
+        }
+
+        self.unexpected_token(vec!["expression".to_string()], looking_at_current)
+    }
+
+    fn parse_infix_expression(
+        &mut self,
+        left: ast::Expression,
+    ) -> Result<ast::Expression, ParseError<'a>> {
+        let looking_at_current = true;
+
+        self.unexpected_token(vec!["expression".to_string()], looking_at_current)
     }
 }
 
@@ -405,23 +584,22 @@ mod tests {
     use super::*;
     #[test]
     fn basic_select_statement_new() {
-        let input = "SELECT distInct all *, name, firstname, lastname, [first], dob FROM users;";
+        let input = "SELECT distInct all name, firstname from";
         let lexer = Lexer::new(input);
         let mut parser = Parser::new(lexer);
         let query = parser.parse();
 
-        println!("parsing");
         let mut select_statement = ast::SelectStatement::default();
-        select_statement.select =
-            KeywordDef::new_single((Span::new(0, 5), Keyword::SELECT));
+        select_statement.select = KeywordDef::new_single((Span::new(0, 5), Keyword::SELECT));
         select_statement.distinct = Some(KeywordDef::new_single((
             Span::new(7, 14),
             Keyword::DISTINCT,
         )));
-        select_statement.all = Some(KeywordDef::new_single((
-            Span::new(16, 18),
-            Keyword::ALL,
-        )));
+        select_statement.columns = vec![
+            ast::SelectItem::Unnamed(ast::Expression::Identifier("name".to_string())),
+            ast::SelectItem::Unnamed(ast::Expression::Identifier("firstname".to_string())),
+        ];
+        select_statement.all = Some(KeywordDef::new_single((Span::new(16, 18), Keyword::ALL)));
         let expected_query = ast::Query {
             statements: vec![ast::Statement::Select(select_statement)],
         };

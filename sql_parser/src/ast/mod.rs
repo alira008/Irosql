@@ -131,6 +131,13 @@ impl Query {
 
 #[derive(Debug, PartialEq, Clone)]
 pub enum Expression {
+    Identifier(String),
+    QuotedIdentifier(String),
+    StringLiteral(String),
+    NumberLiteral(String),
+    LocalVariable(String),
+    Compound(Vec<Expression>),
+    Asterisk,
     Literal(Token),
     CompoundLiteral(Vec<Token>),
     Binary {
@@ -335,6 +342,7 @@ pub struct Join {
 
 #[derive(Debug, PartialEq, Clone)]
 pub struct TableArg {
+    pub from: KeywordDef,
     pub table: TableSource,
     pub joins: Vec<Join>,
 }
@@ -567,6 +575,13 @@ impl fmt::Display for Expression {
                 expression,
                 data_type,
             } => write!(f, "CAST({} as {})", expression, data_type),
+            Expression::Identifier(v) => write!(f, "{}", v),
+            Expression::QuotedIdentifier(v) => write!(f, "{}", v),
+            Expression::StringLiteral(v) => write!(f, "{}", v),
+            Expression::NumberLiteral(v) => write!(f, "{}", v),
+            Expression::LocalVariable(v) => write!(f, "{}", v),
+            Expression::Compound(v) => display_list_delimiter_separated(v, ".", f),
+            Expression::Asterisk => write!(f, "*"),
         }
     }
 }
