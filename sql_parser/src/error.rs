@@ -1,4 +1,4 @@
-use crate::token_new::Token;
+use crate::token_new::TokenKind;
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub struct LexicalError {
@@ -19,7 +19,7 @@ pub struct ParseError<'a> {
 
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub enum ParseErrorType<'a> {
-    UnexpectedToken { token: Token<'a>, expected: Vec<String> },
+    UnexpectedToken { token: TokenKind<'a>, expected: Vec<String> },
     UnrecognizedEof,
     ExpectedKeyword,
     EmptySelectColumns,

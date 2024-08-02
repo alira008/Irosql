@@ -1,4 +1,4 @@
-use crate::{token_new::Token, keywords::Keyword};
+use crate::{token_new::TokenKind, keywords::Keyword};
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Precedence {
@@ -13,26 +13,26 @@ pub enum Precedence {
     Highest,
 }
 
-pub fn get_precedence(token: Token) -> Precedence {
+pub fn get_precedence(token: &TokenKind) -> Precedence {
     match token {
-        Token::Asterisk | Token::ForwardSlash => Precedence::Product,
-        Token::Plus | Token::Minus => Precedence::Sum,
-        Token::Equal
-        | Token::BangEqual
-        | Token::LessThanGreaterThan
-        | Token::LessThan
-        | Token::LessThanEqual
-        | Token::GreaterThan
-        | Token::GreaterThanEqual => Precedence::Comparison,
-        Token::Keyword(Keyword::NOT) => Precedence::Not,
-        Token::Keyword(Keyword::AND) => Precedence::And,
-        Token::Keyword(Keyword::ALL)
-        | Token::Keyword(Keyword::ANY)
-        | Token::Keyword(Keyword::BETWEEN)
-        | Token::Keyword(Keyword::IN)
-        | Token::Keyword(Keyword::LIKE)
-        | Token::Keyword(Keyword::OR)
-        | Token::Keyword(Keyword::SOME) => Precedence::OtherLogicals,
+        TokenKind::Asterisk | TokenKind::ForwardSlash => Precedence::Product,
+        TokenKind::Plus | TokenKind::Minus => Precedence::Sum,
+        TokenKind::Equal
+        | TokenKind::BangEqual
+        | TokenKind::LessThanGreaterThan
+        | TokenKind::LessThan
+        | TokenKind::LessThanEqual
+        | TokenKind::GreaterThan
+        | TokenKind::GreaterThanEqual => Precedence::Comparison,
+        TokenKind::Keyword(Keyword::NOT) => Precedence::Not,
+        TokenKind::Keyword(Keyword::AND) => Precedence::And,
+        TokenKind::Keyword(Keyword::ALL)
+        | TokenKind::Keyword(Keyword::ANY)
+        | TokenKind::Keyword(Keyword::BETWEEN)
+        | TokenKind::Keyword(Keyword::IN)
+        | TokenKind::Keyword(Keyword::LIKE)
+        | TokenKind::Keyword(Keyword::OR)
+        | TokenKind::Keyword(Keyword::SOME) => Precedence::OtherLogicals,
         _ => Precedence::Lowest,
     }
 }

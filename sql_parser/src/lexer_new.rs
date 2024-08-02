@@ -6,7 +6,6 @@ use crate::token_new::Token;
 use crate::token_new::TokenKind;
 
 pub type LexerResult<'a> = Result<Token<'a>, LexicalError>;
-pub type SpannedToken<'a> = (Span, TokenKind<'a>);
 pub type SpannedKeyword = (Span, keywords::Keyword);
 
 #[derive(Debug, Clone)]
@@ -241,7 +240,7 @@ impl<'a> Iterator for Lexer<'a> {
 
         match next_token {
             Ok(token) => {
-                if matches!(token.kind(), TokenKind::Eof) {
+                if matches!(token.kind_as_ref(), TokenKind::Eof) {
                     None
                 } else {
                     Some(next_token)
@@ -267,12 +266,12 @@ mod tests {
             tokens.push(token.kind());
         }
         let expected_tokens = vec![
-            &TokenKind::Keyword(Keyword::DESC),
-            &TokenKind::Keyword(Keyword::CURRENT),
-            &TokenKind::Comma,
-            &TokenKind::Keyword(Keyword::PRECEDING),
-            &TokenKind::SemiColon,
-            &TokenKind::Period,
+            TokenKind::Keyword(Keyword::DESC),
+            TokenKind::Keyword(Keyword::CURRENT),
+            TokenKind::Comma,
+            TokenKind::Keyword(Keyword::PRECEDING),
+            TokenKind::SemiColon,
+            TokenKind::Period,
         ];
 
         assert_eq!(expected_tokens, tokens);
@@ -289,12 +288,12 @@ mod tests {
         }
 
         let expected_tokens = vec![
-            &TokenKind::Keyword(Keyword::SELECT),
-            &TokenKind::Identifier("name"),
-            &TokenKind::Comma,
-            &TokenKind::Identifier("id"),
-            &TokenKind::Keyword(Keyword::FROM),
-            &TokenKind::Identifier("users"),
+            TokenKind::Keyword(Keyword::SELECT),
+            TokenKind::Identifier("name"),
+            TokenKind::Comma,
+            TokenKind::Identifier("id"),
+            TokenKind::Keyword(Keyword::FROM),
+            TokenKind::Identifier("users"),
         ];
 
         assert_eq!(expected_tokens, tokens);
@@ -311,13 +310,13 @@ mod tests {
         }
 
         let expected_tokens = vec![
-            &TokenKind::Keyword(Keyword::SELECT),
-            &TokenKind::QuotedIdentifier("name"),
-            &TokenKind::Comma,
-            &TokenKind::LocalVariable("hello"),
-            &TokenKind::Identifier("id"),
-            &TokenKind::Keyword(Keyword::FROM),
-            &TokenKind::Identifier("users"),
+            TokenKind::Keyword(Keyword::SELECT),
+            TokenKind::QuotedIdentifier("name"),
+            TokenKind::Comma,
+            TokenKind::LocalVariable("hello"),
+            TokenKind::Identifier("id"),
+            TokenKind::Keyword(Keyword::FROM),
+            TokenKind::Identifier("users"),
         ];
 
         assert_eq!(expected_tokens, tokens);
@@ -334,14 +333,14 @@ mod tests {
         }
 
         let expected_tokens = vec![
-            &TokenKind::Keyword(Keyword::SELECT),
-            &TokenKind::Identifier("name"),
-            &TokenKind::Keyword(Keyword::AS),
-            &TokenKind::StringLiteral("SuperName"),
-            &TokenKind::Comma,
-            &TokenKind::Identifier("id"),
-            &TokenKind::Keyword(Keyword::FROM),
-            &TokenKind::Identifier("users"),
+            TokenKind::Keyword(Keyword::SELECT),
+            TokenKind::Identifier("name"),
+            TokenKind::Keyword(Keyword::AS),
+            TokenKind::StringLiteral("SuperName"),
+            TokenKind::Comma,
+            TokenKind::Identifier("id"),
+            TokenKind::Keyword(Keyword::FROM),
+            TokenKind::Identifier("users"),
         ];
 
         assert_eq!(expected_tokens, tokens);
@@ -358,14 +357,14 @@ mod tests {
         }
 
         let expected_tokens = vec![
-            &TokenKind::Keyword(Keyword::SELECT),
-            &TokenKind::Identifier("name"),
-            &TokenKind::Keyword(Keyword::AS),
-            &TokenKind::StringLiteral("SuperName"),
-            &TokenKind::Comma,
-            &TokenKind::Comment("yes id"),
-            &TokenKind::Keyword(Keyword::FROM),
-            &TokenKind::Identifier("users"),
+            TokenKind::Keyword(Keyword::SELECT),
+            TokenKind::Identifier("name"),
+            TokenKind::Keyword(Keyword::AS),
+            TokenKind::StringLiteral("SuperName"),
+            TokenKind::Comma,
+            TokenKind::Comment("yes id"),
+            TokenKind::Keyword(Keyword::FROM),
+            TokenKind::Identifier("users"),
         ];
 
         assert_eq!(expected_tokens, tokens);
@@ -381,9 +380,9 @@ mod tests {
         }
 
         let expected_tokens = vec![
-            Ok(&TokenKind::Keyword(Keyword::SELECT)),
-            Ok(&TokenKind::Identifier("name")),
-            Ok(&TokenKind::Keyword(Keyword::AS)),
+            Ok(TokenKind::Keyword(Keyword::SELECT)),
+            Ok(TokenKind::Identifier("name")),
+            Ok(TokenKind::Keyword(Keyword::AS)),
             Err(LexicalError {
                 error: LexicalErrorType::UnexpectedStringEnd,
             }),
@@ -402,9 +401,9 @@ mod tests {
         }
 
         let expected_tokens = vec![
-            Ok(&TokenKind::Keyword(Keyword::SELECT)),
-            Ok(&TokenKind::Identifier("name")),
-            Ok(&TokenKind::Keyword(Keyword::AS)),
+            Ok(TokenKind::Keyword(Keyword::SELECT)),
+            Ok(TokenKind::Identifier("name")),
+            Ok(TokenKind::Keyword(Keyword::AS)),
             Err(LexicalError {
                 error: LexicalErrorType::UnexpectedQuotedIdentifierEnd,
             }),

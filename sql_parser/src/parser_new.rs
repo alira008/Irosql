@@ -1,27 +1,27 @@
 use crate::ast::{self, KeywordDef, Span};
 use crate::error::{parse_error, LexicalError, ParseError, ParseErrorType};
 use crate::keywords::Keyword;
-use crate::lexer_new::{Lexer, SpannedKeyword, SpannedToken};
+use crate::lexer_new::{Lexer, SpannedKeyword};
 use crate::operator::{get_precedence, Precedence};
-use crate::token_new::Token;
+use crate::token_new::{Token, TokenKind};
 
-const SELECT_ITEM_TYPE: &'static [Token<'static>] = &[
-    Token::Identifier(""),
-    Token::QuotedIdentifier(""),
-    Token::NumberLiteral(""),
-    Token::LocalVariable(""),
-    Token::LeftParen,
-    Token::Asterisk,
-    Token::Minus,
-    Token::Plus,
+const SELECT_ITEM_TYPE: &'static [TokenKind<'static>] = &[
+    TokenKind::Identifier(""),
+    TokenKind::QuotedIdentifier(""),
+    TokenKind::NumberLiteral(""),
+    TokenKind::LocalVariable(""),
+    TokenKind::LeftParen,
+    TokenKind::Asterisk,
+    TokenKind::Minus,
+    TokenKind::Plus,
 ];
 
 #[derive(Debug, Clone)]
 pub struct Parser<'a> {
     lexer: Lexer<'a>,
-    current_token: Option<SpannedToken<'a>>,
-    peek_token: Option<SpannedToken<'a>>,
-    extra_peek_token: Option<SpannedToken<'a>>,
+    current_token: Option<Token<'a>>,
+    peek_token: Option<Token<'a>>,
+    extra_peek_token: Option<Token<'a>>,
 
     lexer_errors: Vec<LexicalError>,
     parse_errors: Vec<ParseError<'a>>,
@@ -47,24 +47,24 @@ impl<'a> Parser<'a> {
         let _ = self.next_token();
     }
 
-    fn next_token(&mut self) -> Option<SpannedToken> {
+    fn next_token(&mut self) -> Option<Token<'a>> {
         let token = self.current_token.take();
-        let mut next_spanned;
+        let mut next_tok;
 
         loop {
             match self.lexer.next() {
                 Some(r) => match r {
-                    Ok(spanned_token) => match spanned_token.1 {
-                        Token::Comment(_) => todo!(),
+                    Ok(token) => match token.kind_as_ref() {
+                        TokenKind::Comment(_) => todo!(),
                         _ => {
-                            next_spanned = Some(spanned_token);
+                            next_tok = Some(token);
                             break;
                         }
                     },
                     Err(e) => self.lexer_errors.push(e),
                 },
                 None => {
-                    next_spanned = None;
+                    next_tok = None;
                     break;
                 }
             }
@@ -72,55 +72,43 @@ impl<'a> Parser<'a> {
 
         self.current_token = self.peek_token.take();
         self.peek_token = self.extra_peek_token.take();
-        self.extra_peek_token = next_spanned.take();
+        self.extra_peek_token = next_tok.take();
         token
     }
 
     fn peek_precedence(&self) -> Precedence {
         match self.peek_token {
-            Some((_, token)) => get_precedence(token),
+            Some(token) => get_precedence(token.kind_as_ref()),
             None => Precedence::Lowest,
         }
     }
 
     fn current_precedence(&self) -> Precedence {
         match self.current_token {
-            Some((_, token)) => get_precedence(token),
+            Some(token) => get_precedence(token.kind_as_ref()),
             None => Precedence::Lowest,
         }
     }
 
-    fn maybe_token(&mut self, token: &Token, current: bool) -> Option<SpannedToken> {
+    fn maybe_token(&mut self, token: &TokenKind, current: bool) -> Option<Token<'a>> {
         let tok = if current {
-            self.current_token.take()
+            self.current_token
         } else {
-            self.peek_token.take()
+            self.peek_token
         };
         match tok {
-            Some((s, t)) if t.shallow_eq_token(token) => {
-                if current {
-                    self.advance();
-                } else {
-                    self.advance();
-                    self.advance();
-                }
-                Some((s, t))
+            Some(t) if t.shallow_eq_token_kind(token) => {
+                self.advance();
+                tok
             }
-            t => {
-                if current {
-                    self.current_token = t;
-                } else {
-                    self.peek_token = t;
-                };
-                None
-            }
+            _ => None,
         }
     }
 
-    fn maybe_token_many(&mut self, tokens: &[Token], current: bool) -> Option<SpannedToken> {
-        for token in tokens {
-            if let Some(spanned_token) = self.maybe_token(token, current) {
-                Some(spanned_token);
+    fn maybe_token_many(&mut self, tokens_kinds: &[TokenKind], current: bool) -> Option<Token<'a>> {
+        for token_kind in tokens_kinds {
+            if let Some(token) = self.maybe_token(token_kind, current) {
+                Some(token);
             }
         }
 
@@ -133,7 +121,9 @@ impl<'a> Parser<'a> {
         } else {
             self.peek_token
         };
-        if compare_token.is_some_and(|(_, t)| matches!(t, Token::Keyword(kw) if kw == *keyword)) {
+        if compare_token
+            .is_some_and(|t| matches!(t.kind_as_ref(), TokenKind::Keyword(kw) if kw == keyword))
+        {
             return true;
         }
         false
@@ -147,7 +137,8 @@ impl<'a> Parser<'a> {
         };
         // let ret_spanned_token;
         for keyword in keywords {
-            if compare_token.is_some_and(|(_, t)| matches!(t, Token::Keyword(kw) if kw == *keyword))
+            if compare_token
+                .is_some_and(|t| matches!(t.kind_as_ref(), TokenKind::Keyword(kw) if kw == keyword))
             {
                 return true;
             }
@@ -155,27 +146,27 @@ impl<'a> Parser<'a> {
         false
     }
 
-    fn token_is(&mut self, token: &Token, current: bool) -> bool {
+    fn token_is(&mut self, token_kind: &TokenKind, current: bool) -> bool {
         let compare_token = if current {
             self.current_token
         } else {
             self.peek_token
         };
-        if compare_token.is_some_and(|(_, t)| t.shallow_eq_token(token)) {
+        if compare_token.is_some_and(|t| t.shallow_eq_token_kind(token_kind)) {
             return true;
         }
         false
     }
 
-    fn token_is_any(&mut self, tokens: &[Token], current: bool) -> bool {
+    fn token_is_any(&mut self, token_kinds: &[TokenKind], current: bool) -> bool {
         let compare_token = if current {
             self.current_token
         } else {
             self.peek_token
         };
         // let ret_spanned_token;
-        for token in tokens {
-            if compare_token.is_some_and(|(_, t)| t.shallow_eq_token(token)) {
+        for token in token_kinds {
+            if compare_token.is_some_and(|t| t.shallow_eq_token_kind(token)) {
                 return true;
             }
         }
@@ -184,49 +175,41 @@ impl<'a> Parser<'a> {
 
     fn maybe_keyword(&mut self, keyword: Keyword, current: bool) -> Option<SpannedKeyword> {
         let tok = if current {
-            self.current_token.take()
+            &self.current_token
         } else {
-            self.peek_token.take()
+            &self.peek_token
         };
         match tok {
-            Some((s, Token::Keyword(k))) if k == keyword => {
-                if current {
+            Some(token) => match token.kind_as_ref() {
+                &TokenKind::Keyword(kw) if kw == keyword => {
+                    let location = token.location();
                     self.advance();
-                } else {
-                    self.advance();
-                    self.advance();
+                    Some((location, keyword))
                 }
-                Some((s, keyword))
-            }
-            t => {
-                if current {
-                    self.current_token = t;
-                } else {
-                    self.peek_token = t;
-                };
-                None
-            }
+                _ => None,
+            },
+            _ => None,
         }
     }
 
     fn expect_token(
         &mut self,
-        expected_token: &Token,
+        expected_token: &TokenKind,
         current: bool,
     ) -> Result<Span, ParseError<'a>> {
         match self.maybe_token(expected_token, current) {
-            Some((s, _)) => Ok(s),
+            Some(token) => Ok(token.location()),
             None => self.unexpected_token(vec![expected_token.to_string()], current),
         }
     }
 
     fn expect_token_many(
         &mut self,
-        expected_tokens: &[Token],
+        expected_tokens: &[TokenKind],
         current: bool,
-    ) -> Result<Span, ParseError<'a>> {
+    ) -> Result<Token, ParseError<'a>> {
         match self.maybe_token_many(expected_tokens, current) {
-            Some((s, _)) => Ok(s),
+            Some(token) => Ok(token),
             None => self.unexpected_token(
                 expected_tokens.iter().map(|t| t.to_string()).collect(),
                 current,
@@ -240,7 +223,7 @@ impl<'a> Parser<'a> {
         current: bool,
     ) -> Result<SpannedKeyword, ParseError<'a>> {
         match self.maybe_keyword(expected_keyword, current) {
-            Some((s, k)) => Ok((s, k)),
+            Some(spanned_keyword) => Ok(spanned_keyword),
             None => self.unexpected_token(vec![expected_keyword.to_string()], current),
         }
     }
@@ -251,48 +234,46 @@ impl<'a> Parser<'a> {
         current: bool,
     ) -> Result<A, ParseError<'a>> {
         let tok = if current {
-            self.current_token
+            &self.current_token
         } else {
-            self.peek_token
+            &self.peek_token
         };
         match tok {
-            Some((_, t)) => parse_error(ParseErrorType::UnexpectedToken { token: t, expected }),
+            Some(t) => parse_error(ParseErrorType::UnexpectedToken {
+                token: *t.kind_as_ref(),
+                expected,
+            }),
             None => parse_error(ParseErrorType::UnrecognizedEof),
         }
     }
 
     fn expect_identifier(&mut self, current: bool) -> Result<Span, ParseError<'a>> {
-        let spanned_tok = if current {
+        let maybe_token = if current {
             self.current_token
         } else {
             self.peek_token
         };
-        if let Some((span, tok)) = spanned_tok {
-            if matches!(tok, Token::Identifier(..)) {
-                if current {
-                    self.advance();
-                } else {
-                    self.advance();
-                    self.advance();
-                };
-                return Ok(span);
+        if let Some(token) = maybe_token {
+            if matches!(token.kind_as_ref(), TokenKind::Identifier(..)) {
+                self.advance();
+                return Ok(token.location());
             }
         }
         self.unexpected_token(vec!["Identifier".to_string()], current)
     }
 
-    fn maybe_identifier(&mut self) -> Option<(Span, &'a str)> {
-        match self.current_token.take() {
-            Some((s, Token::Identifier(val))) => {
-                self.advance();
-                Some((s, val))
-            }
-            t => {
-                self.current_token = t;
-                None
-            }
-        }
-    }
+    // fn maybe_identifier(&mut self) -> Option<(Span, &'a str)> {
+    //     match &self.current_token {
+    //         Some(token) if matches!(token.kind_as_ref(), TokenKind::Identifier(..)) => {
+    //             self.advance();
+    //             Some((token.location(), val))
+    //         }
+    //         t => {
+    //             self.current_token = t;
+    //             None
+    //         }
+    //     }
+    // }
 }
 
 impl<'a> Parser<'a> {
@@ -312,8 +293,8 @@ impl<'a> Parser<'a> {
 
     fn parse_statement(&mut self) -> Result<ast::Statement, ParseError<'a>> {
         match self.current_token {
-            Some((_, t)) => match t {
-                Token::Keyword(keyword) => match keyword {
+            Some(maybe_token) => match maybe_token.kind_as_ref() {
+                TokenKind::Keyword(keyword) => match keyword {
                     Keyword::SELECT => {
                         return Ok(ast::Statement::Select(self.parse_select_statement()?))
                     }
@@ -367,9 +348,8 @@ impl<'a> Parser<'a> {
         // get the columns to select
         let mut columns: Vec<ast::SelectItem> = vec![];
         while self.token_is_any(SELECT_ITEM_TYPE, true) {
-            println!("current: {:#?}", self.current_token);
             if !columns.is_empty() {
-                let _ = self.expect_token(&Token::Comma, true);
+                let _ = self.expect_token(&TokenKind::Comma, true);
             }
 
             let expression = self.parse_expression(Precedence::Lowest)?;
@@ -383,7 +363,6 @@ impl<'a> Parser<'a> {
                 | ast::Expression::Asterisk => (),
                 _ => return self.unexpected_token(vec!["select items".to_string()], true),
             }
-            println!("peek: {:#?}", self.peek_token);
 
             if let Some(spanned_kw) = self.maybe_keyword(Keyword::AS, true) {
                 let as_keyword = ast::KeywordDef::new_single(spanned_kw);
@@ -411,7 +390,7 @@ impl<'a> Parser<'a> {
                 }
             }
 
-            if !self.token_is(&Token::Comma, false) {
+            if !self.token_is(&TokenKind::Comma, false) {
                 break;
             }
 
@@ -430,7 +409,7 @@ impl<'a> Parser<'a> {
         &mut self,
         expr: ast::Expression,
     ) -> Result<Option<ast::Expression>, ParseError<'a>> {
-        if !self.token_is(&Token::Period, false) {
+        if !self.token_is(&TokenKind::Period, false) {
             return Ok(None);
         }
 
@@ -438,24 +417,19 @@ impl<'a> Parser<'a> {
         // go to period
         self.advance();
         loop {
-            let new_expr;
-            if let Some((s, Token::Identifier(val))) =
-                self.maybe_token(&Token::Identifier(""), false)
-            {
-                new_expr = ast::Expression::Identifier(val.to_string());
-            } else if let Some((s, Token::QuotedIdentifier(val))) =
-                self.maybe_token(&Token::QuotedIdentifier(""), false)
-            {
-                new_expr = ast::Expression::QuotedIdentifier(val.to_string());
-            } else if let Some((s, _)) = self.maybe_token(&Token::Asterisk, false) {
-                new_expr = ast::Expression::Asterisk;
-                break;
-            } else {
-                return self.unexpected_token(vec!["Identifier".to_string()], false);
-            }
+            let token = self.expect_token_many(&SELECT_ITEM_TYPE, false)?;
+            let new_expr = match token.kind_as_ref() {
+                TokenKind::Identifier(i) => ast::Expression::Identifier(i.to_string()),
+                TokenKind::QuotedIdentifier(q) => ast::Expression::QuotedIdentifier(q.to_string()),
+                TokenKind::Asterisk => {
+                    compound.push(ast::Expression::Asterisk);
+                    break;
+                }
+                _ => unreachable!(),
+            };
 
             compound.push(new_expr);
-            if !self.token_is(&Token::Period, false) {
+            if !self.token_is(&TokenKind::Period, false) {
                 break;
             }
 
@@ -486,21 +460,25 @@ impl<'a> Parser<'a> {
     }
 
     fn parse_table_source(&mut self) -> Result<ast::TableSource, ParseError<'a>> {
-        let _ = self.expect_token_many(
-            &[
-                Token::Identifier(""),
-                Token::QuotedIdentifier(""),
-                Token::LocalVariable(""),
-                Token::LeftParen,
-            ],
-            true,
-        )?;
+        let expected_tokens = [
+            TokenKind::Identifier(""),
+            TokenKind::QuotedIdentifier(""),
+            TokenKind::LocalVariable(""),
+            TokenKind::LeftParen,
+        ];
+        if self.token_is_any(&expected_tokens, true) {
+            return self.unexpected_token(
+                expected_tokens.iter().map(|t| t.to_string()).collect(),
+                true,
+            );
+        }
 
         let expr = self.parse_expression(Precedence::Lowest)?;
         match expr {
             ast::Expression::Identifier(_)
             | ast::Expression::QuotedIdentifier(_)
-            | ast::Expression::LocalVariable(_)|ast::Expression::Compound(_) => {
+            | ast::Expression::LocalVariable(_)
+            | ast::Expression::Compound(_) => {
                 return Ok(ast::TableSource::Table {
                     name: expr,
                     is_as: false,
@@ -509,7 +487,6 @@ impl<'a> Parser<'a> {
             }
             _ => return self.unexpected_token(vec!["select items".to_string()], true),
         }
-        self.unexpected_token(vec![], true)
     }
 
     fn parse_table_joins(&mut self) -> Result<Vec<ast::Join>, ParseError<'a>> {
@@ -539,24 +516,30 @@ impl<'a> Parser<'a> {
         let looking_at_current = true;
         if self.token_is_any(&SELECT_ITEM_TYPE, looking_at_current) {
             let mut expr = match self.current_token {
-                Some((s, Token::Identifier(val))) => ast::Expression::Identifier(val.to_string()),
-                Some((s, Token::QuotedIdentifier(val))) => {
-                    ast::Expression::QuotedIdentifier(val.to_string())
-                }
-                Some((s, Token::StringLiteral(val))) => {
-                    ast::Expression::StringLiteral(val.to_string())
-                }
-                Some((s, Token::NumberLiteral(val))) => {
-                    ast::Expression::NumberLiteral(val.to_string())
-                }
-                Some((s, Token::LocalVariable(val))) => {
-                    ast::Expression::LocalVariable(val.to_string())
-                }
-                Some((s, Token::Asterisk)) => ast::Expression::Asterisk,
+                Some(token) => match token.kind_as_ref() {
+                    TokenKind::Identifier(val) => ast::Expression::Identifier(val.to_string()),
+                    TokenKind::QuotedIdentifier(val) => {
+                        ast::Expression::QuotedIdentifier(val.to_string())
+                    }
+                    TokenKind::StringLiteral(val) => {
+                        ast::Expression::StringLiteral(val.to_string())
+                    }
+                    TokenKind::NumberLiteral(val) => {
+                        ast::Expression::NumberLiteral(val.to_string())
+                    }
+                    TokenKind::LocalVariable(val) => {
+                        ast::Expression::LocalVariable(val.to_string())
+                    }
+                    TokenKind::Asterisk => ast::Expression::Asterisk,
+                    _ => unreachable!(),
+                },
                 _ => unreachable!(),
             };
 
-            if self.token_is_any(&[Token::Identifier(""), Token::QuotedIdentifier("")], true) {
+            if self.token_is_any(
+                &[TokenKind::Identifier(""), TokenKind::QuotedIdentifier("")],
+                true,
+            ) {
                 if let Some(compound) = self.parse_compound_identifier(expr.clone())? {
                     expr = compound;
                 }

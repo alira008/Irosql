@@ -12,14 +12,21 @@ impl<'a> Token<'a> {
         Self {kind, location}
     }
 
-    pub fn kind(&self) -> &TokenKind<'a> {
+    pub fn kind_as_ref(&self) -> &TokenKind<'a> {
         &self.kind
     }
 
-    pub fn shallow_eq_token(&self, other: &Token) -> bool {
+    pub fn kind(&self) -> TokenKind<'a> {
+        self.kind
+    }
+
+    pub fn location(&self) -> Span {
+        self.location
+    }
+
+    pub fn shallow_eq_token_kind(&self, other: &TokenKind) -> bool {
         let our = self.kind;
-        let other_token = other.kind;
-        match (our, other_token) {
+        match (our, *other) {
             (TokenKind::Identifier(_), TokenKind::Identifier(_)) => true,
             (TokenKind::QuotedIdentifier(_), TokenKind::QuotedIdentifier(_)) => true,
             (TokenKind::StringLiteral(_), TokenKind::StringLiteral(_)) => true,
