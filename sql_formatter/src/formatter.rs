@@ -19,15 +19,15 @@ impl Formatter {
     }
 
     pub fn format(&mut self, input: &str) -> Result<(), String> {
-        let lexer = sql_parser::lexer::Lexer::new(input);
-        let mut parser = sql_parser::Parser::new(lexer);
+        let lexer = sql_parser::lexer_new::Lexer::new(input);
+        let mut parser = sql_parser::parser_new::Parser::new(lexer);
         let query = parser.parse();
-        if parser.errors().len() > 0 {
-            return Err(parser.errors().join("\n"));
-        }
-
-        // walk the ast
-        walk_query(self, &query);
+        // if parser.errors().len() > 0 {
+        //     return Err(parser.errors().join("\n"));
+        // }
+        //
+        // // walk the ast
+        // walk_query(self, &query);
 
         Ok(())
     }
@@ -194,17 +194,17 @@ impl Visitor for Formatter {
         self.visit_select_where_clause(&query.where_clause);
     }
 
-    fn visit_select_top_argument(&mut self, top: &Option<sql_parser::ast::TopArg>) {
+    fn visit_select_top_argument(&mut self, top: &Option<sql_parser::ast::Top>) {
         if let Some(top) = top {
             self.print_keyword("TOP ");
             self.visit_expression(&top.quantity);
             self.formatted_query.push_str(" ");
-            if top.percent {
-                self.print_keyword("PERCENT ");
-            }
-            if top.with_ties {
-                self.print_keyword("WITH TIES ");
-            }
+            // if top.percent {
+            //     self.print_keyword("PERCENT ");
+            // }
+            // if top.with_ties {
+            //     self.print_keyword("WITH TIES ");
+            // }
         }
     }
 

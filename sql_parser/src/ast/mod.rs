@@ -1,11 +1,12 @@
 pub mod data_type;
+use crate::keywords;
 use crate::token::Token;
 use core::fmt;
 
 pub use data_type::DataType;
 pub use data_type::NumericSize;
 
-#[derive(Debug, PartialEq, Clone, Copy)]
+#[derive(Debug, PartialEq, Clone, Copy, Default)]
 pub struct Span {
     line: usize,
     column: usize,
@@ -17,8 +18,48 @@ impl Span {
     }
 }
 
+#[derive(Debug, PartialEq, Clone)]
 pub enum Symbol {
-    LeftParen {start: Span, end: Span}
+    LeftParen { start: Span, end: Span },
+}
+
+impl Default for Symbol {
+    fn default() -> Self {
+        Self::LeftParen {
+            start: Span::default(),
+            end: Span::default(),
+        }
+    }
+}
+
+#[derive(Debug, PartialEq, Clone)]
+pub enum KeywordDef {
+    Single {
+        start: Span,
+        end: Span,
+        keyword: keywords::Keyword,
+    },
+    Multi(Vec<keywords::Keyword>),
+}
+
+impl KeywordDef {
+    pub fn new_single(keyword_with_spans: (Span, keywords::Keyword, Span)) -> Self {
+        KeywordDef::Single {
+            start: keyword_with_spans.0,
+            end: keyword_with_spans.2,
+            keyword: keyword_with_spans.1,
+        }
+    }
+}
+
+impl Default for KeywordDef {
+    fn default() -> Self {
+        Self::Single {
+            start: Span::default(),
+            end: Span::default(),
+            keyword: keywords::Keyword::default(),
+        }
+    }
 }
 
 #[derive(Debug, PartialEq, Clone)]
@@ -195,7 +236,7 @@ pub enum SelectItem {
 
 #[derive(Debug, PartialEq, Clone)]
 pub struct InsertStatement {
-    pub top: Option<TopArg>,
+    pub top: Option<Top>,
     pub table: Expression,
     pub columns: Vec<Expression>,
     pub values: Vec<Expression>,
@@ -203,7 +244,7 @@ pub struct InsertStatement {
 
 #[derive(Debug, PartialEq, Clone)]
 pub struct UpdateStatement {
-    pub top: Option<TopArg>,
+    pub top: Option<Top>,
     pub table: Expression,
     pub update_columns: Vec<Expression>,
     pub from: Option<TableArg>,
@@ -212,15 +253,17 @@ pub struct UpdateStatement {
 
 #[derive(Debug, PartialEq, Clone)]
 pub struct DeleteStatement {
-    pub top: Option<TopArg>,
+    pub top: Option<Top>,
     pub table: TableArg,
     pub where_clause: Option<Expression>,
 }
 
 #[derive(Debug, PartialEq, Clone, Default)]
 pub struct SelectStatement {
-    pub distinct: bool,
-    pub top: Option<TopArg>,
+    pub select: KeywordDef,
+    pub distinct: Option<KeywordDef>,
+    pub all: Option<KeywordDef>,
+    pub top: Option<Top>,
     pub columns: Vec<SelectItem>,
     pub into_table: Option<IntoArg>,
     pub table: Option<TableArg>,
@@ -239,9 +282,10 @@ impl SelectStatement {
 }
 
 #[derive(Debug, PartialEq, Clone)]
-pub struct TopArg {
-    pub with_ties: bool,
-    pub percent: bool,
+pub struct Top {
+    pub top: KeywordDef,
+    pub with_ties: Option<KeywordDef>,
+    pub percent: Option<KeywordDef>,
     pub quantity: Expression,
 }
 
@@ -355,6 +399,15 @@ where
         }
     }
     Ok(())
+}
+
+impl fmt::Display for KeywordDef {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            KeywordDef::Single { keyword, .. } => write!(f, "{}", keyword),
+            KeywordDef::Multi(kws) => display_list_delimiter_separated(kws, " ", f),
+        }
+    }
 }
 
 impl fmt::Display for CommonTableExpression {
@@ -676,11 +729,11 @@ impl fmt::Display for UpdateStatement {
 impl fmt::Display for SelectStatement {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         // SELECT
-        f.write_str("SELECT")?;
+        f.write_str("SELECT ")?;
 
         // DISTINCT
-        if self.distinct {
-            f.write_str(" DISTINCT")?;
+        if let Some(distinct) = &self.distinct {
+            write!(f, "{} ", distinct)?;
         }
 
         // TOP
@@ -739,14 +792,17 @@ impl fmt::Display for SelectStatement {
     }
 }
 
-impl fmt::Display for TopArg {
+impl fmt::Display for Top {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match (self.with_ties, self.percent) {
-            (true, true) => write!(f, "TOP {} PERCENT WITH TIES", self.quantity),
-            (true, false) => write!(f, "TOP {} WITH TIES", self.quantity),
-            (false, true) => write!(f, "TOP {} PERCENT", self.quantity),
-            (false, false) => write!(f, "TOP {}", self.quantity),
+        write!(f, "{} {}", self.top, self.quantity)?;
+        if let Some(percent) = &self.percent {
+            write!(f, " {}", percent)?;
         }
+        if let Some(with_ties) = &self.with_ties {
+            write!(f, " {}", with_ties)?;
+        }
+
+        Ok(())
     }
 }
 

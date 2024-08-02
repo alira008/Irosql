@@ -2,7 +2,7 @@ use crate::{
     ast::{
         CommonTableExpression, Expression, FetchArg, IntoArg, Join, JoinType, NextOrFirst,
         OffsetArg, OrderByArg, OverClause, Query, RowOrRows, RowsOrRange, SelectItem,
-        SelectStatement, Statement, TableArg, TableSource, TopArg, WindowFrame, WindowFrameBound, DataType, LocalVariable, ExecOrExecute, ProcedureParameter, CommonTableExpressionStatement, InsertStatement, UpdateStatement, DeleteStatement,
+        SelectStatement, Statement, TableArg, TableSource, Top, WindowFrame, WindowFrameBound, DataType, LocalVariable, ExecOrExecute, ProcedureParameter, CommonTableExpressionStatement, InsertStatement, UpdateStatement, DeleteStatement,
     },
     token::Token,
 };
@@ -37,7 +37,7 @@ pub trait Visitor {
         self.visit_select_offset(&query.offset);
         self.visit_select_fetch(&query.fetch);
     }
-    fn visit_select_top_argument(&mut self, arg: &Option<TopArg>) {
+    fn visit_select_top_argument(&mut self, arg: &Option<Top>) {
         if let Some(top_arg) = arg {
             self.visit_expression(&top_arg.quantity);
         }

@@ -1,5 +1,29 @@
 use core::fmt;
 
+pub fn lookup_keyword(keyword: &str) -> Option<Keyword> {
+    let normalized_keyword = keyword.to_uppercase();
+    match ALL_KEYWORDS.binary_search(&normalized_keyword.as_str()) {
+        Ok(index) => Some(ALL_KEYWORDS_INDEX[index].clone()),
+        Err(_) => None,
+    }
+}
+
+impl Default for Keyword {
+    fn default() -> Self {
+        Keyword::SELECT
+    }
+}
+
+impl fmt::Display for Keyword {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        if let Ok(index) = ALL_KEYWORDS_INDEX.binary_search(self) {
+            write!(f, "{}", ALL_KEYWORDS[index])?;
+        }
+
+        Err(fmt::Error)
+    }
+}
+
 macro_rules! define_keyword {
     ($ident:ident = $string_keyword:expr) => {
         pub const $ident: &'static str = $string_keyword;
@@ -224,24 +248,6 @@ define_keywords!(
     WITH,
     YEAR
 );
-
-pub fn lookup_keyword(keyword: &str) -> Option<Keyword> {
-    let normalized_keyword = keyword.to_uppercase();
-    match ALL_KEYWORDS.binary_search(&normalized_keyword.as_str()) {
-        Ok(index) => Some(ALL_KEYWORDS_INDEX[index].clone()),
-        Err(_) => None,
-    }
-}
-
-impl fmt::Display for Keyword {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        if let Ok(index) = ALL_KEYWORDS_INDEX.binary_search(self) {
-            write!(f, "{}", ALL_KEYWORDS[index])?;
-        }
-
-        Err(fmt::Error)
-    }
-}
 
 #[cfg(test)]
 mod tests {
