@@ -3,9 +3,10 @@ use crate::error::LexicalError;
 use crate::error::LexicalErrorType;
 use crate::keywords;
 use crate::token_new::Token;
+use crate::token_new::TokenKind;
 
-pub type LexerResult<'a> = Result<SpannedToken<'a>, LexicalError>;
-pub type SpannedToken<'a> = (Span, Token<'a>);
+pub type LexerResult<'a> = Result<Token<'a>, LexicalError>;
+pub type SpannedToken<'a> = (Span, TokenKind<'a>);
 pub type SpannedKeyword = (Span, keywords::Keyword);
 
 #[derive(Debug, Clone)]
@@ -154,33 +155,33 @@ impl<'a> Lexer<'a> {
         self.skip_whitespace();
 
         let start = self.current_position as u32;
-        let token: Token<'_> = match self.ch {
+        let kind: TokenKind<'_> = match self.ch {
             Some(ch) => match ch {
-                ',' => Token::Comma,
-                '(' => Token::LeftParen,
-                ')' => Token::RightParen,
-                '=' => Token::Equal,
-                '!' if self.chars.peek().is_some_and(|c| c == &'=') => Token::BangEqual,
-                '<' if self.chars.peek().is_some_and(|c| c == &'=') => Token::LessThanEqual,
-                '>' if self.chars.peek().is_some_and(|c| c == &'=') => Token::GreaterThanEqual,
-                '<' if self.chars.peek().is_some_and(|c| c == &'>') => Token::LessThanGreaterThan,
-                '<' => Token::LessThan,
-                '>' => Token::GreaterThan,
-                '+' => Token::Plus,
+                ',' => TokenKind::Comma,
+                '(' => TokenKind::LeftParen,
+                ')' => TokenKind::RightParen,
+                '=' => TokenKind::Equal,
+                '!' if self.chars.peek().is_some_and(|c| c == &'=') => TokenKind::BangEqual,
+                '<' if self.chars.peek().is_some_and(|c| c == &'=') => TokenKind::LessThanEqual,
+                '>' if self.chars.peek().is_some_and(|c| c == &'=') => TokenKind::GreaterThanEqual,
+                '<' if self.chars.peek().is_some_and(|c| c == &'>') => TokenKind::LessThanGreaterThan,
+                '<' => TokenKind::LessThan,
+                '>' => TokenKind::GreaterThan,
+                '+' => TokenKind::Plus,
                 '-' if self.chars.peek().is_some_and(|c| c == &'-') => {
                     self.read_char();
                     let comment = self.read_comment();
-                    Token::Comment(comment)
+                    TokenKind::Comment(comment)
                 }
-                '-' => Token::Minus,
-                '/' => Token::ForwardSlash,
-                '*' => Token::Asterisk,
-                '%' => Token::Percent,
-                '.' => Token::Period,
-                ';' => Token::SemiColon,
+                '-' => TokenKind::Minus,
+                '/' => TokenKind::ForwardSlash,
+                '*' => TokenKind::Asterisk,
+                '%' => TokenKind::Percent,
+                '.' => TokenKind::Period,
+                ';' => TokenKind::SemiColon,
                 '[' if self.chars.peek().is_some_and(|c| c.is_alphabetic()) => {
                     match self.read_quoted_identifier() {
-                        Ok(ident) => Token::QuotedIdentifier(ident),
+                        Ok(ident) => TokenKind::QuotedIdentifier(ident),
                         Err(error) => {
                             self.read_char();
                             return Err(error);
@@ -188,7 +189,7 @@ impl<'a> Lexer<'a> {
                     }
                 }
                 '\'' => match self.read_string_literal() {
-                    Ok(string_literal) => Token::StringLiteral(string_literal),
+                    Ok(string_literal) => TokenKind::StringLiteral(string_literal),
                     Err(error) => {
                         self.read_char();
                         return Err(error);
@@ -198,23 +199,23 @@ impl<'a> Lexer<'a> {
                     self.read_char();
 
                     let local_variable = self.read_identifier();
-                    Token::LocalVariable(local_variable)
+                    TokenKind::LocalVariable(local_variable)
                 }
                 c if c.is_alphabetic() => {
                     let identifier = self.read_identifier();
                     if let Some(keyword) = keywords::lookup_keyword(identifier) {
-                        Token::Keyword(keyword)
+                        TokenKind::Keyword(keyword)
                     } else {
-                        Token::Identifier(identifier)
+                        TokenKind::Identifier(identifier)
                     }
                 }
                 '_' if self.chars.peek().is_some_and(|c| c.is_alphabetic()) => {
                     let identifier = self.read_identifier();
-                    Token::Identifier(identifier)
+                    TokenKind::Identifier(identifier)
                 }
                 c if c.is_numeric() => {
                     let number_literal = self.read_number_literal();
-                    Token::NumberLiteral(number_literal)
+                    TokenKind::NumberLiteral(number_literal)
                 }
                 _ => {
                     self.read_char();
@@ -223,12 +224,12 @@ impl<'a> Lexer<'a> {
                     });
                 }
             },
-            None => Token::Eof,
+            None => TokenKind::Eof,
         };
 
         let location = Span::new(start, self.current_position as u32);
         self.read_char();
-        Ok((location, token))
+        Ok(Token::new(kind, location))
     }
 }
 
@@ -239,8 +240,8 @@ impl<'a> Iterator for Lexer<'a> {
         let next_token = self.next_lex();
 
         match next_token {
-            Ok((_, token)) => {
-                if matches!(token, Token::Eof) {
+            Ok(token) => {
+                if matches!(token.kind(), TokenKind::Eof) {
                     None
                 } else {
                     Some(next_token)
@@ -262,16 +263,16 @@ mod tests {
         let lexer = Lexer::new(input);
         let mut tokens = Vec::new();
         for result in lexer {
-            let (_, token) = result.unwrap();
-            tokens.push(token);
+            let token = result.unwrap();
+            tokens.push(token.kind());
         }
         let expected_tokens = vec![
-            Token::Keyword(Keyword::DESC),
-            Token::Keyword(Keyword::CURRENT),
-            Token::Comma,
-            Token::Keyword(Keyword::PRECEDING),
-            Token::SemiColon,
-            Token::Period,
+            &TokenKind::Keyword(Keyword::DESC),
+            &TokenKind::Keyword(Keyword::CURRENT),
+            &TokenKind::Comma,
+            &TokenKind::Keyword(Keyword::PRECEDING),
+            &TokenKind::SemiColon,
+            &TokenKind::Period,
         ];
 
         assert_eq!(expected_tokens, tokens);
@@ -283,17 +284,17 @@ mod tests {
         let lexer = Lexer::new(input);
         let mut tokens = Vec::new();
         for result in lexer {
-            let (_, token) = result.unwrap();
-            tokens.push(token);
+            let token = result.unwrap();
+            tokens.push(token.kind());
         }
 
         let expected_tokens = vec![
-            Token::Keyword(Keyword::SELECT),
-            Token::Identifier("name"),
-            Token::Comma,
-            Token::Identifier("id"),
-            Token::Keyword(Keyword::FROM),
-            Token::Identifier("users"),
+            &TokenKind::Keyword(Keyword::SELECT),
+            &TokenKind::Identifier("name"),
+            &TokenKind::Comma,
+            &TokenKind::Identifier("id"),
+            &TokenKind::Keyword(Keyword::FROM),
+            &TokenKind::Identifier("users"),
         ];
 
         assert_eq!(expected_tokens, tokens);
@@ -305,18 +306,18 @@ mod tests {
         let lexer = Lexer::new(input);
         let mut tokens = Vec::new();
         for result in lexer {
-            let (_, token) = result.unwrap();
-            tokens.push(token);
+            let token = result.unwrap();
+            tokens.push(token.kind());
         }
 
         let expected_tokens = vec![
-            Token::Keyword(Keyword::SELECT),
-            Token::QuotedIdentifier("name"),
-            Token::Comma,
-            Token::LocalVariable("hello"),
-            Token::Identifier("id"),
-            Token::Keyword(Keyword::FROM),
-            Token::Identifier("users"),
+            &TokenKind::Keyword(Keyword::SELECT),
+            &TokenKind::QuotedIdentifier("name"),
+            &TokenKind::Comma,
+            &TokenKind::LocalVariable("hello"),
+            &TokenKind::Identifier("id"),
+            &TokenKind::Keyword(Keyword::FROM),
+            &TokenKind::Identifier("users"),
         ];
 
         assert_eq!(expected_tokens, tokens);
@@ -328,19 +329,19 @@ mod tests {
         let lexer = Lexer::new(input);
         let mut tokens = Vec::new();
         for result in lexer {
-            let (_, token) = result.unwrap();
-            tokens.push(token);
+            let token = result.unwrap();
+            tokens.push(token.kind());
         }
 
         let expected_tokens = vec![
-            Token::Keyword(Keyword::SELECT),
-            Token::Identifier("name"),
-            Token::Keyword(Keyword::AS),
-            Token::StringLiteral("SuperName"),
-            Token::Comma,
-            Token::Identifier("id"),
-            Token::Keyword(Keyword::FROM),
-            Token::Identifier("users"),
+            &TokenKind::Keyword(Keyword::SELECT),
+            &TokenKind::Identifier("name"),
+            &TokenKind::Keyword(Keyword::AS),
+            &TokenKind::StringLiteral("SuperName"),
+            &TokenKind::Comma,
+            &TokenKind::Identifier("id"),
+            &TokenKind::Keyword(Keyword::FROM),
+            &TokenKind::Identifier("users"),
         ];
 
         assert_eq!(expected_tokens, tokens);
@@ -352,19 +353,19 @@ mod tests {
         let lexer = Lexer::new(input);
         let mut tokens = Vec::new();
         for result in lexer {
-            let (_, token) = result.unwrap();
-            tokens.push(token);
+            let token = result.unwrap();
+            tokens.push(token.kind());
         }
 
         let expected_tokens = vec![
-            Token::Keyword(Keyword::SELECT),
-            Token::Identifier("name"),
-            Token::Keyword(Keyword::AS),
-            Token::StringLiteral("SuperName"),
-            Token::Comma,
-            Token::Comment("yes id"),
-            Token::Keyword(Keyword::FROM),
-            Token::Identifier("users"),
+            &TokenKind::Keyword(Keyword::SELECT),
+            &TokenKind::Identifier("name"),
+            &TokenKind::Keyword(Keyword::AS),
+            &TokenKind::StringLiteral("SuperName"),
+            &TokenKind::Comma,
+            &TokenKind::Comment("yes id"),
+            &TokenKind::Keyword(Keyword::FROM),
+            &TokenKind::Identifier("users"),
         ];
 
         assert_eq!(expected_tokens, tokens);
@@ -376,13 +377,13 @@ mod tests {
         let lexer = Lexer::new(input);
         let mut tokens = Vec::new();
         for result in lexer {
-            tokens.push(result.map(|t| t.1));
+            tokens.push(result.map(|t| t.kind()));
         }
 
         let expected_tokens = vec![
-            Ok(Token::Keyword(Keyword::SELECT)),
-            Ok(Token::Identifier("name")),
-            Ok(Token::Keyword(Keyword::AS)),
+            Ok(&TokenKind::Keyword(Keyword::SELECT)),
+            Ok(&TokenKind::Identifier("name")),
+            Ok(&TokenKind::Keyword(Keyword::AS)),
             Err(LexicalError {
                 error: LexicalErrorType::UnexpectedStringEnd,
             }),
@@ -397,13 +398,13 @@ mod tests {
         let lexer = Lexer::new(input);
         let mut tokens = Vec::new();
         for result in lexer {
-            tokens.push(result.map(|t| t.1));
+            tokens.push(result.map(|t| t.kind()));
         }
 
         let expected_tokens = vec![
-            Ok(Token::Keyword(Keyword::SELECT)),
-            Ok(Token::Identifier("name")),
-            Ok(Token::Keyword(Keyword::AS)),
+            Ok(&TokenKind::Keyword(Keyword::SELECT)),
+            Ok(&TokenKind::Identifier("name")),
+            Ok(&TokenKind::Keyword(Keyword::AS)),
             Err(LexicalError {
                 error: LexicalErrorType::UnexpectedQuotedIdentifierEnd,
             }),

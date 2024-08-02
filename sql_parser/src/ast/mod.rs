@@ -6,7 +6,7 @@ use core::fmt;
 pub use data_type::DataType;
 pub use data_type::NumericSize;
 
-#[derive(Debug, PartialEq, Clone, Copy, Default)]
+#[derive(Debug, PartialEq, Eq, Clone, Copy, Default)]
 pub struct Span {
     start: u32,
     end: u32,
