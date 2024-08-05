@@ -1,10 +1,6 @@
 pub mod ast;
-pub mod keywords;
-pub mod lexer;
 pub mod token;
 pub mod visitor;
-pub mod token_new;
-pub mod lexer_new;
 pub mod parser_new;
 pub mod error;
 pub mod operator;

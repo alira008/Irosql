@@ -1,9 +1,7 @@
-use crate::ast::{self, KeywordDef, Span};
-use crate::error::{parse_error, LexicalError, ParseError, ParseErrorType};
-use crate::keywords::Keyword;
-use crate::lexer_new::{Lexer, SpannedKeyword};
+use crate::ast::{self, KeywordDef};
+use crate::error::{parse_error, ParseError, ParseErrorType};
 use crate::operator::{get_precedence, Precedence};
-use crate::token_new::{Token, TokenKind};
+use sql_lexer::{Keyword, Lexer, LexicalError, SpannedKeyword, Token, TokenKind, Span};
 
 const SELECT_ITEM_TYPE: &'static [TokenKind<'static>] = &[
     TokenKind::Identifier(""),

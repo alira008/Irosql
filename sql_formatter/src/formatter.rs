@@ -1,4 +1,5 @@
 use sql_parser::visitor::{walk_query, Visitor};
+use sql_lexer::{Keyword,TokenKind};
 
 use crate::settings::{FormatterSettings, KeywordCase};
 
@@ -19,9 +20,9 @@ impl Formatter {
     }
 
     pub fn format(&mut self, input: &str) -> Result<(), String> {
-        let lexer = sql_parser::lexer_new::Lexer::new(input);
-        let mut parser = sql_parser::parser_new::Parser::new(lexer);
-        let query = parser.parse();
+        // let lexer = sql_parser::lexer_new::Lexer::new(input);
+        // let mut parser = sql_parser::parser_new::Parser::new(lexer);
+        // let query = parser.parse();
         // if parser.errors().len() > 0 {
         //     return Err(parser.errors().join("\n"));
         // }
@@ -361,16 +362,16 @@ impl Visitor for Formatter {
         {
             self.visit_expression(left);
             self.formatted_query.push_str(" ");
-            if matches!(
-                operator.kind(),
-                sql_parser::token::Kind::Keyword(sql_parser::keywords::Keyword::AND)
-                    | sql_parser::token::Kind::Keyword(sql_parser::keywords::Keyword::OR)
-            ) && self.settings.indent_between_conditions
-            {
-                self.increase_indent();
-                self.print_new_line();
-                self.decrease_indent();
-            }
+            // if matches!(
+            //     operator.kind(),
+            //     TokenKind::Keyword(sql_lexer::Keyword::AND)
+            //         | TokenKind::Keyword(sql_parser::keywords::Keyword::OR)
+            // ) && self.settings.indent_between_conditions
+            // {
+            //     self.increase_indent();
+            //     self.print_new_line();
+            //     self.decrease_indent();
+            // }
             self.visit_token(operator);
             self.formatted_query.push_str(" ");
             self.visit_expression(right);

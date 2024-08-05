@@ -1,4 +1,4 @@
-use crate::{token_new::TokenKind, keywords::Keyword};
+use sql_lexer::{TokenKind, Keyword};
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Precedence {

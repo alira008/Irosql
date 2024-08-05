@@ -1,11 +1,8 @@
 [package]
-name = "sql_formatter"
+name = "sql_lexer"
 version = "0.1.0"
 edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-clap = { version = "4.4.18", features = ["derive"] }
-sql_parser = { path = "../sql_parser" }
-sql_lexer = { path = "../sql_lexer" }

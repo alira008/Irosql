@@ -1,5 +1,17 @@
-use crate::{ast::Span, keywords::Keyword};
 use core::fmt;
+use crate::Keyword;
+
+#[derive(Debug, PartialEq, Eq, Clone, Copy, Default)]
+pub struct Span {
+    start: u32,
+    end: u32,
+}
+
+impl Span {
+    pub fn new(start: u32, end: u32) -> Self {
+        Self { start, end }
+    }
+}
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub struct Token<'a> {

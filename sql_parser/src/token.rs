@@ -1,4 +1,4 @@
-use crate::keywords;
+use sql_lexer::Keyword;
 use core::fmt;
 
 #[derive(Debug, Clone)]
@@ -119,7 +119,7 @@ impl Literal {
 pub enum Kind {
     Ident,
     LocalVariable,
-    Keyword(keywords::Keyword),
+    Keyword(Keyword),
     Number,
     Comma,
     LeftParen,

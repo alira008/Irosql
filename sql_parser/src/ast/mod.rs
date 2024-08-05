@@ -1,22 +1,10 @@
 pub mod data_type;
-use crate::keywords;
 use crate::token::Token;
 use core::fmt;
+use sql_lexer::{Span, Keyword};
 
 pub use data_type::DataType;
 pub use data_type::NumericSize;
-
-#[derive(Debug, PartialEq, Eq, Clone, Copy, Default)]
-pub struct Span {
-    start: u32,
-    end: u32,
-}
-
-impl Span {
-    pub fn new(start: u32, end: u32) -> Self {
-        Self { start, end }
-    }
-}
 
 #[derive(Debug, PartialEq, Clone)]
 pub enum Symbol {
@@ -36,13 +24,13 @@ impl Default for Symbol {
 pub enum KeywordDef {
     Single {
         location: Span,
-        keyword: keywords::Keyword,
+        keyword: Keyword,
     },
-    Multi(Vec<keywords::Keyword>),
+    Multi(Vec<Keyword>),
 }
 
 impl KeywordDef {
-    pub fn new_single(keyword_with_spans: (Span, keywords::Keyword)) -> Self {
+    pub fn new_single(keyword_with_spans: (Span, Keyword)) -> Self {
         KeywordDef::Single {
             location: keyword_with_spans.0,
             keyword: keyword_with_spans.1,
@@ -54,7 +42,7 @@ impl Default for KeywordDef {
     fn default() -> Self {
         Self::Single {
             location: Span::default(),
-            keyword: keywords::Keyword::default(),
+            keyword: Keyword::default(),
         }
     }
 }

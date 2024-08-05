@@ -1,16 +1,4 @@
-use crate::token_new::TokenKind;
-
-#[derive(Debug, PartialEq, Eq, Clone, Copy)]
-pub struct LexicalError {
-    pub error: LexicalErrorType,
-}
-
-#[derive(Debug, PartialEq, Eq, Clone, Copy)]
-pub enum LexicalErrorType {
-    UnrecognizedToken,
-    UnexpectedStringEnd,
-    UnexpectedQuotedIdentifierEnd,
-}
+use sql_lexer::TokenKind;
 
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub struct ParseError<'a> {
