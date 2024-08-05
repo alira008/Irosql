@@ -1,7 +1,10 @@
 pub mod data_type;
+mod keyword;
 use crate::token::Token;
 use core::fmt;
-use sql_lexer::{Span, Keyword};
+use sql_lexer::Span;
+pub use keyword::{Keyword, KeywordKind};
+
 
 pub use data_type::DataType;
 pub use data_type::NumericSize;
@@ -16,33 +19,6 @@ impl Default for Symbol {
         Self::LeftParen {
             start: Span::default(),
             end: Span::default(),
-        }
-    }
-}
-
-#[derive(Debug, PartialEq, Clone)]
-pub enum KeywordDef {
-    Single {
-        location: Span,
-        keyword: Keyword,
-    },
-    Multi(Vec<Keyword>),
-}
-
-impl KeywordDef {
-    pub fn new_single(keyword_with_spans: (Span, Keyword)) -> Self {
-        KeywordDef::Single {
-            location: keyword_with_spans.0,
-            keyword: keyword_with_spans.1,
-        }
-    }
-}
-
-impl Default for KeywordDef {
-    fn default() -> Self {
-        Self::Single {
-            location: Span::default(),
-            keyword: Keyword::default(),
         }
     }
 }
@@ -171,14 +147,20 @@ pub enum Expression {
     Exists(Box<Expression>),
     ExpressionList(Vec<Expression>),
     Function {
-        name: Box<Expression>,
-        args: Box<Expression>,
+        name: Box<FunctionName>,
+        args: Option<Vec<Expression>>,
         over: Option<Box<OverClause>>,
     },
     Cast {
         expression: Box<Expression>,
         data_type: DataType,
     },
+}
+
+#[derive(Debug, PartialEq, Clone)]
+pub enum FunctionName {
+    Builtin(Keyword),
+    User(Expression)
 }
 
 #[derive(Debug, PartialEq, Clone)]
@@ -216,12 +198,12 @@ pub enum SelectItem {
     Unnamed(Expression),
     WithAlias {
         expression: Expression,
-        as_token: bool,
+        as_kw: Option<Keyword>,
         alias: String,
     },
     WildcardWithAlias {
         expression: Expression,
-        as_token: bool,
+        as_kw: Option<Keyword>,
         alias: String,
     },
 }
@@ -252,9 +234,9 @@ pub struct DeleteStatement {
 
 #[derive(Debug, PartialEq, Clone, Default)]
 pub struct SelectStatement {
-    pub select: KeywordDef,
-    pub distinct: Option<KeywordDef>,
-    pub all: Option<KeywordDef>,
+    pub select: Keyword,
+    pub distinct: Option<Keyword>,
+    pub all: Option<Keyword>,
     pub top: Option<Top>,
     pub columns: Vec<SelectItem>,
     pub into_table: Option<IntoArg>,
@@ -275,9 +257,9 @@ impl SelectStatement {
 
 #[derive(Debug, PartialEq, Clone)]
 pub struct Top {
-    pub top: KeywordDef,
-    pub with_ties: Option<KeywordDef>,
-    pub percent: Option<KeywordDef>,
+    pub top: Keyword,
+    pub with_ties: Option<Vec<Keyword>>,
+    pub percent: Option<Keyword>,
     pub quantity: Expression,
 }
 
@@ -323,14 +305,16 @@ pub enum JoinType {
 
 #[derive(Debug, PartialEq, Clone)]
 pub struct Join {
+    pub join: Vec<Keyword>,
     pub join_type: JoinType,
+    pub on: Keyword,
     pub table: TableSource,
     pub condition: Option<Expression>,
 }
 
 #[derive(Debug, PartialEq, Clone)]
 pub struct TableArg {
-    pub from: KeywordDef,
+    pub from: Keyword,
     pub table: TableSource,
     pub joins: Vec<Join>,
 }
@@ -392,15 +376,6 @@ where
         }
     }
     Ok(())
-}
-
-impl fmt::Display for KeywordDef {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match self {
-            KeywordDef::Single { keyword, .. } => write!(f, "{}", keyword),
-            KeywordDef::Multi(kws) => display_list_delimiter_separated(kws, " ", f),
-        }
-    }
 }
 
 impl fmt::Display for CommonTableExpression {
@@ -632,13 +607,13 @@ impl fmt::Display for SelectItem {
             SelectItem::Unnamed(expr) => write!(f, "{}", expr),
             SelectItem::WithAlias {
                 expression,
-                as_token,
+                as_kw,
                 alias,
             } => {
                 write!(f, "{}", expression)?;
 
-                if *as_token {
-                    write!(f, " AS ")?;
+                if let Some(kw) = as_kw {
+                    write!(f, " {} ", kw)?;
                 } else {
                     write!(f, " ")?;
                 }
@@ -648,13 +623,13 @@ impl fmt::Display for SelectItem {
             }
             SelectItem::WildcardWithAlias {
                 expression,
-                as_token,
+                as_kw,
                 alias,
             } => {
                 write!(f, "{}", expression)?;
 
-                if *as_token {
-                    write!(f, " AS ")?;
+                if let Some(kw) = as_kw {
+                    write!(f, " {} ", kw)?;
                 } else {
                     write!(f, " ")?;
                 }
@@ -799,7 +774,7 @@ impl fmt::Display for Top {
             write!(f, " {}", percent)?;
         }
         if let Some(with_ties) = &self.with_ties {
-            write!(f, " {}", with_ties)?;
+            display_list_delimiter_separated(with_ties, "", f)?;
         }
 
         Ok(())

@@ -10,6 +10,7 @@ pub enum ParseErrorType<'a> {
     UnexpectedToken { token: TokenKind<'a>, expected: Vec<String> },
     UnrecognizedEof,
     ExpectedKeyword,
+    ExpectedFunctionName,
     EmptySelectColumns,
     InvalidOrUnimplementedStatement,
 }

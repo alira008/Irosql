@@ -1,4 +1,4 @@
-use sql_lexer::{TokenKind, Keyword};
+use sql_lexer::TokenKind;
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Precedence {
@@ -24,15 +24,15 @@ pub fn get_precedence(token: &TokenKind) -> Precedence {
         | TokenKind::LessThanEqual
         | TokenKind::GreaterThan
         | TokenKind::GreaterThanEqual => Precedence::Comparison,
-        TokenKind::Keyword(Keyword::NOT) => Precedence::Not,
-        TokenKind::Keyword(Keyword::AND) => Precedence::And,
-        TokenKind::Keyword(Keyword::ALL)
-        | TokenKind::Keyword(Keyword::ANY)
-        | TokenKind::Keyword(Keyword::BETWEEN)
-        | TokenKind::Keyword(Keyword::IN)
-        | TokenKind::Keyword(Keyword::LIKE)
-        | TokenKind::Keyword(Keyword::OR)
-        | TokenKind::Keyword(Keyword::SOME) => Precedence::OtherLogicals,
+        TokenKind::Not => Precedence::Not,
+        TokenKind::And => Precedence::And,
+        TokenKind::All
+        | TokenKind::Any
+        | TokenKind::Between
+        | TokenKind::In
+        | TokenKind::Like
+        | TokenKind::Or
+        | TokenKind::Some => Precedence::OtherLogicals,
         _ => Precedence::Lowest,
     }
 }

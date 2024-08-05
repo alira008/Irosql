@@ -1,4 +1,3 @@
-use sql_lexer::Keyword;
 use core::fmt;
 
 #[derive(Debug, Clone)]
@@ -119,7 +118,7 @@ impl Literal {
 pub enum Kind {
     Ident,
     LocalVariable,
-    Keyword(Keyword),
+    // Keyword(Keyword),
     Number,
     Comma,
     LeftParen,
@@ -162,7 +161,7 @@ impl fmt::Display for Kind {
         match self {
             Kind::Ident => f.write_str("IDENTIFIER"),
             Kind::LocalVariable => f.write_str("LOCAL_VARIABLE"),
-            Kind::Keyword(k) => write!(f, "KEYWORD({:?})", k),
+            // Kind::Keyword(k) => write!(f, "KEYWORD({:?})", k),
             Kind::Number => f.write_str("NUMBER"),
             Kind::Comma => f.write_str(","),
             Kind::LeftParen => f.write_str("("),
