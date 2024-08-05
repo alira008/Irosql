@@ -2,7 +2,6 @@ mod keyword;
 mod token;
 
 pub use token::{Span, Token, TokenKind};
-pub use keyword::Keyword;
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub struct LexicalError {
@@ -17,7 +16,6 @@ pub enum LexicalErrorType {
 }
 
 pub type LexerResult<'a> = Result<Token<'a>, LexicalError>;
-pub type SpannedKeyword = (Span, Keyword);
 
 #[derive(Debug, Clone)]
 pub struct Lexer<'a> {
@@ -215,8 +213,8 @@ impl<'a> Lexer<'a> {
                 }
                 c if c.is_alphabetic() => {
                     let identifier = self.read_identifier();
-                    if let Some(keyword) = keyword::lookup_keyword(identifier) {
-                        TokenKind::Keyword(keyword)
+                    if let Some(keyword) = token::lookup_keyword(identifier) {
+                        keyword
                     } else {
                         TokenKind::Identifier(identifier)
                     }
