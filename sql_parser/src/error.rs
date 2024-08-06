@@ -15,6 +15,7 @@ pub enum ParseErrorType<'a> {
     EmptyPartitionByClause,
     EmptyOrderByArgs,
     MissingRowsOrRangeInWindowFrameClause,
+    MissingAliasAfterAsKeyword,
     ExpectedUnboundedPrecedingCurrentRowOrNumberPreceding,
     ExpectedUnboundedPrecedingCurrentRowOrNumberFollowing,
     InvalidOrUnimplementedStatement,

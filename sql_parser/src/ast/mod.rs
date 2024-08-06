@@ -103,12 +103,12 @@ pub enum SelectItem {
     WithAlias {
         expression: Expression,
         as_kw: Option<Keyword>,
-        alias: String,
+        alias: Expression,
     },
     WildcardWithAlias {
         expression: Expression,
         as_kw: Option<Keyword>,
-        alias: String,
+        alias: Expression,
     },
 }
 

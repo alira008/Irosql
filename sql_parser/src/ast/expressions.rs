@@ -386,12 +386,13 @@ impl fmt::Display for WindowFrame {
         }
         match &self.start {
             WindowFrameBound::Preceding(expr) | WindowFrameBound::Following(expr) => {
-                write!(f, " {} ", expr,)?;
+                write!(f, " {} ", expr)?;
                 display_list_delimiter_separated(&self.start_bound_keywords, " ", f)?;
             }
             WindowFrameBound::CurrentRow
             | WindowFrameBound::UnboundedPreceding
             | WindowFrameBound::UnboundedFollowing => {
+                f.write_str(" ")?;
                 display_list_delimiter_separated(&self.start_bound_keywords, " ", f)?
             }
         }
@@ -402,12 +403,13 @@ impl fmt::Display for WindowFrame {
         if let (Some(end), Some(end_bound_keywords)) = (&self.end, &self.end_bound_keywords) {
             match end {
                 WindowFrameBound::Preceding(expr) | WindowFrameBound::Following(expr) => {
-                    write!(f, " {} ", expr,)?;
+                    write!(f, " {} ", expr)?;
                     display_list_delimiter_separated(&end_bound_keywords, " ", f)?;
                 }
                 WindowFrameBound::CurrentRow
                 | WindowFrameBound::UnboundedPreceding
                 | WindowFrameBound::UnboundedFollowing => {
+                    f.write_str(" ")?;
                     display_list_delimiter_separated(&end_bound_keywords, " ", f)?
                 }
             }
@@ -423,17 +425,19 @@ impl fmt::Display for OverClause {
         f.write_str("(")?;
         if let Some(partition_by_kws) = &self.partition_by_kws {
             display_list_delimiter_separated(&partition_by_kws, " ", f)?;
+            f.write_str(" ")?;
         }
         if !self.partition_by.is_empty() {
             display_list_comma_separated(&self.partition_by, f)?;
         }
 
         if !self.partition_by.is_empty() && !self.order_by.is_empty() {
-            f.write_str(" ");
+            f.write_str(" ")?;
         }
 
         if let Some(order_by_kws) = &self.order_by_kws {
             display_list_delimiter_separated(&order_by_kws, " ", f)?;
+            f.write_str(" ")?;
         }
         if !self.order_by.is_empty() {
             display_list_comma_separated(&self.order_by, f)?;

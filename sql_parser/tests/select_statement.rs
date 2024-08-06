@@ -4,7 +4,8 @@ use sql_parser::parser_new::Parser;
 
 #[test]
 fn basic_select_statement_new() {
-    let input = "SELECT distInct all name, firstname, [dbo].lmao.bruhCalculate(bruh) from testtable";
+    let input =
+        "SELECT distInct all name, firstname, [dbo].lmao.bruhCalculate(bruh) from testtable";
     let lexer = Lexer::new(input);
     let mut parser = Parser::new(lexer);
     let query = parser.parse();
@@ -60,7 +61,64 @@ fn basic_select_statement_new() {
         statements: vec![ast::Statement::Select(select_statement)],
     };
 
-    dbg!(query.to_string());
-
     assert_eq!(expected_query, query);
+}
+
+#[test]
+fn basic_select_statement_new_no_spans() {
+    let input =
+        "SELECT distInct all name, firstname, [dbo].lmao.bruhCalculate(bruh) from testtable";
+    let expected_query =
+        "select distinct all name, firstname, [dbo].lmao.bruhCalculate(bruh) from testtable";
+    let lexer = Lexer::new(input);
+    let mut parser = Parser::new(lexer);
+    let query = parser.parse();
+
+    assert_eq!(expected_query, query.to_string());
+}
+
+#[test]
+fn select_statement_with_builtin_fn() {
+    let input = r"SELECT   name, sum(lastprice) over(partition by symbol, insertdate
+    order by inserttime dESc rows betWEEN UNBOunded prECEDing and cURRENT ROW), [dbo].
+    lmao.bruhCalculate(bruh) as hello , yes from testtable";
+    let mut expected_query = String::from("select name, sum(lastprice) over(partition by symbol,");
+    expected_query += " insertdate order by inserttime desc rows between unbounded preceding ";
+    expected_query += "and current row), [dbo].lmao.bruhCalculate(bruh) as hello, yes from testtable";
+    let lexer = Lexer::new(input);
+    let mut parser = Parser::new(lexer);
+    let query = parser.parse();
+
+    assert_eq!(expected_query, query.to_string());
+}
+
+#[test]
+fn select_statement_with_builtin_fn_two() {
+    let input = r"SELECT   name, sum(lastprice) over(partition by symbol, insertdate
+    order by inserttime dESc range 242024 prECEDing), [dbo].
+    lmao.bruhCalculate(bruh) as hello , yes from testtable";
+    let mut expected_query = String::from("select name, sum(lastprice) over(partition by symbol,");
+    expected_query += " insertdate order by inserttime desc range 242024 preceding";
+    expected_query += "), [dbo].lmao.bruhCalculate(bruh) as hello, yes from testtable";
+    let lexer = Lexer::new(input);
+    let mut parser = Parser::new(lexer);
+    let query = parser.parse();
+
+    assert_eq!(expected_query, query.to_string());
+}
+
+#[test]
+fn select_statement_with_builtin_fn_three() {
+    let input = r"SELECT   name, sum(lastprice) over(partition by symbol, insertdate
+    order by inserttime dESc rows betWEEN 2 prECEDing and 242024 following), [dbo].
+    lmao.bruhCalculate(bruh) as hello , yes from testtable";
+    let mut expected_query = String::from("select name, sum(lastprice) over(partition by symbol,");
+    expected_query += " insertdate order by inserttime desc rows between 2 preceding ";
+    expected_query += "and 242024 following), [dbo].lmao.bruhCalculate(bruh) as hello, yes";
+    expected_query += " from testtable";
+    let lexer = Lexer::new(input);
+    let mut parser = Parser::new(lexer);
+    let query = parser.parse();
+
+    assert_eq!(expected_query, query.to_string());
 }

@@ -288,6 +288,47 @@ impl<'a> TokenKind<'a> {
     pub fn default_comment() -> Self {
         Self::Comment("")
     }
+    pub fn builtin_fn(&self) -> bool {
+        match self {
+            TokenKind::Abs
+            | TokenKind::Acos
+            | TokenKind::Asin
+            | TokenKind::Atan
+            | TokenKind::Avg
+            | TokenKind::Cast
+            | TokenKind::Ceil
+            | TokenKind::Ceiling
+            | TokenKind::Cos
+            | TokenKind::Cot
+            | TokenKind::Count
+            | TokenKind::Degrees
+            | TokenKind::DenseRank
+            | TokenKind::Exp
+            | TokenKind::Floor
+            | TokenKind::Getdate
+            | TokenKind::Log
+            | TokenKind::Log10
+            | TokenKind::Max
+            | TokenKind::Min
+            | TokenKind::Nullif
+            | TokenKind::Pi
+            | TokenKind::Power
+            | TokenKind::Radians
+            | TokenKind::Rank
+            | TokenKind::Round
+            | TokenKind::RowNumber
+            | TokenKind::Sqrt
+            | TokenKind::Square
+            | TokenKind::Stage
+            | TokenKind::Stdev
+            | TokenKind::Stdevp
+            | TokenKind::Sum
+            | TokenKind::Tan
+            | TokenKind::Var
+            | TokenKind::Varp => true,
+            _ => false,
+        }
+    }
     pub fn shallow_eq_token(&self, other: &TokenKind) -> bool {
         match (self, other) {
             (&TokenKind::Identifier(_), &TokenKind::Identifier(_)) => true,

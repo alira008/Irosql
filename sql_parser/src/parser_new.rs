@@ -1,7 +1,7 @@
 use crate::ast::{self, Keyword};
 use crate::error::{parse_error, ParseError, ParseErrorType};
 use crate::operator::{get_precedence, Precedence};
-use sql_lexer::{Lexer, LexicalError, Span, Token, TokenKind};
+use sql_lexer::{Lexer, LexicalError, Token, TokenKind};
 
 const SELECT_ITEM_TYPE_START: &'static [TokenKind<'static>] = &[
     TokenKind::Identifier(""),
@@ -12,6 +12,45 @@ const SELECT_ITEM_TYPE_START: &'static [TokenKind<'static>] = &[
     TokenKind::Asterisk,
     TokenKind::Minus,
     TokenKind::Plus,
+];
+
+const BUILTIN_FN_START: &'static [TokenKind<'static>] = &[
+    TokenKind::Abs,
+    TokenKind::Acos,
+    TokenKind::Asin,
+    TokenKind::Atan,
+    TokenKind::Avg,
+    TokenKind::Cast,
+    TokenKind::Ceil,
+    TokenKind::Ceiling,
+    TokenKind::Cos,
+    TokenKind::Cot,
+    TokenKind::Count,
+    TokenKind::Degrees,
+    TokenKind::DenseRank,
+    TokenKind::Exp,
+    TokenKind::Floor,
+    TokenKind::Getdate,
+    TokenKind::Log,
+    TokenKind::Log10,
+    TokenKind::Max,
+    TokenKind::Min,
+    TokenKind::Nullif,
+    TokenKind::Pi,
+    TokenKind::Power,
+    TokenKind::Radians,
+    TokenKind::Rank,
+    TokenKind::Round,
+    TokenKind::RowNumber,
+    TokenKind::Sqrt,
+    TokenKind::Square,
+    TokenKind::Stage,
+    TokenKind::Stdev,
+    TokenKind::Stdevp,
+    TokenKind::Sum,
+    TokenKind::Tan,
+    TokenKind::Var,
+    TokenKind::Varp,
 ];
 
 const ORDER_BY_ARGS_START: &'static [TokenKind<'static>] = &[
@@ -161,6 +200,9 @@ impl<'a> Parser<'a> {
 
     fn expect_select_item_start(&mut self) -> Result<(), ParseError<'a>> {
         if let Some(token) = self.peek_token {
+            if token.kind_as_ref().builtin_fn() {
+                return Ok(());
+            }
             for start_token in SELECT_ITEM_TYPE_START {
                 if start_token.shallow_eq_token(token.kind_as_ref()) {
                     return Ok(());
@@ -319,35 +361,52 @@ impl<'a> Parser<'a> {
         // return an error if the next token is not an identifier or number
         // get the columns to select
         let mut columns: Vec<ast::SelectItem> = vec![];
-        while self.token_is_any(&SELECT_ITEM_TYPE_START) {
+        // while self.token_is_any(&SELECT_ITEM_TYPE_START) {
+        loop {
+            self.expect_select_item_start()?;
+            dbg!(self.peek_token);
             let expression = self.parse_expression(Precedence::Lowest)?;
 
-            if let Some(kw) = self.maybe_keyword(TokenKind::As) {
+            let as_kw = self.maybe_keyword(TokenKind::As);
+
+            // check for alias
+            if self.token_is_any(&[
+                TokenKind::Identifier(""),
+                TokenKind::QuotedIdentifier(""),
+                TokenKind::StringLiteral(""),
+            ]) {
+                let alias = match self.peek_token {
+                    Some(token) => ast::Expression::try_from(token)?,
+                    _ => unreachable!(),
+                };
+                self.advance();
+
                 if matches!(expression, ast::Expression::Asterisk) {
-                    columns.push(ast::SelectItem::Wildcard);
                     let select_item = ast::SelectItem::WildcardWithAlias {
                         expression,
-                        as_kw: Some(kw),
-                        alias: "".to_string(),
+                        as_kw,
+                        alias,
                     };
                     columns.push(select_item);
                 } else {
                     let select_item = ast::SelectItem::WithAlias {
                         expression,
-                        as_kw: Some(kw),
-                        alias: "".to_string(),
+                        as_kw,
+                        alias,
                     };
                     columns.push(select_item);
                 }
-            } else {
+            } else if as_kw.is_none() {
                 if matches!(expression, ast::Expression::Asterisk) {
                     columns.push(ast::SelectItem::Wildcard);
                 } else {
                     columns.push(ast::SelectItem::Unnamed(expression));
                 }
+            } else {
+                return parse_error(ParseErrorType::MissingAliasAfterAsKeyword);
             }
-
             dbg!(self.peek_token);
+
             if !self.token_is(&TokenKind::Comma) {
                 break;
             }
@@ -497,11 +556,12 @@ impl<'a> Parser<'a> {
         let _ = self.expect_token(&TokenKind::RightParen)?;
 
         if let Some(kw) = self.maybe_keyword(TokenKind::Over) {
-            let _ = self.parse_function_over_clause(kw)?;
+            let over_clause = self.parse_function_over_clause(kw)?;
+            dbg!(&over_clause);
             return Ok(ast::Expression::Function {
                 name: Box::new(function_name),
                 args,
-                over: None,
+                over: Some(Box::new(over_clause)),
             });
         }
 
@@ -543,6 +603,7 @@ impl<'a> Parser<'a> {
             partition_by_kws = Some(vec![partition_kw, by_kw]);
         }
         let partition_by_clause = self.parse_function_partition_clause()?;
+        dbg!(&partition_by_clause);
 
         let mut order_by_kws = None;
         if let Some(order_kw) = self.maybe_keyword(TokenKind::Order) {
@@ -550,13 +611,15 @@ impl<'a> Parser<'a> {
             order_by_kws = Some(vec![order_kw, by_kw]);
         }
         let order_by_args = self.parse_order_by_args()?;
-
-        let _ = self.expect_token(&TokenKind::RightParen)?;
+        dbg!(&order_by_args);
 
         let mut window_frame_clause = None;
         if self.token_is_any(&[TokenKind::Rows, TokenKind::Range]) {
             window_frame_clause = Some(self.parse_function_window_frame_clause()?);
         }
+        dbg!(&window_frame_clause);
+
+        let _ = self.expect_token(&TokenKind::RightParen)?;
 
         Ok(ast::OverClause {
             over_kw,
@@ -601,7 +664,7 @@ impl<'a> Parser<'a> {
                     column: expr,
                     order_kw: Some(kw),
                 }
-            } else if let Some(kw) = self.maybe_keyword(TokenKind::Asc) {
+            } else if let Some(kw) = self.maybe_keyword(TokenKind::Desc) {
                 ast::OrderByArg {
                     column: expr,
                     order_kw: Some(kw),
@@ -614,7 +677,6 @@ impl<'a> Parser<'a> {
             };
 
             items.push(item);
-            self.advance();
             if !self.token_is(&TokenKind::Comma) {
                 break;
             }
@@ -649,12 +711,11 @@ impl<'a> Parser<'a> {
             let preceding_kw = self.consume_keyword(TokenKind::Preceding)?;
             start_bound_keywords = vec![unbounded_kw, preceding_kw];
             window_frame_bound_start = ast::WindowFrameBound::UnboundedPreceding;
-        } else if let Some(current_kw) = self.maybe_keyword(TokenKind::Unbounded) {
+        } else if let Some(current_kw) = self.maybe_keyword(TokenKind::Current) {
             let row_kw = self.consume_keyword(TokenKind::Row)?;
             start_bound_keywords = vec![current_kw, row_kw];
             window_frame_bound_start = ast::WindowFrameBound::CurrentRow;
         } else if self.token_is(&TokenKind::NumberLiteral("")) {
-            self.advance();
             let expr = self.parse_expression(Precedence::Lowest)?;
             let preceding_kw = self.consume_keyword(TokenKind::Preceding)?;
             start_bound_keywords = vec![preceding_kw];
@@ -685,13 +746,12 @@ impl<'a> Parser<'a> {
         if let Some(unbounded_kw) = self.maybe_keyword(TokenKind::Unbounded) {
             let following_kw = self.consume_keyword(TokenKind::Following)?;
             end_bound_keywords = vec![unbounded_kw, following_kw];
-            window_frame_bound_end = ast::WindowFrameBound::UnboundedPreceding;
-        } else if let Some(current_kw) = self.maybe_keyword(TokenKind::Unbounded) {
+            window_frame_bound_end = ast::WindowFrameBound::UnboundedFollowing;
+        } else if let Some(current_kw) = self.maybe_keyword(TokenKind::Current) {
             let row_kw = self.consume_keyword(TokenKind::Row)?;
             end_bound_keywords = vec![current_kw, row_kw];
             window_frame_bound_end = ast::WindowFrameBound::CurrentRow;
         } else if self.token_is(&TokenKind::NumberLiteral("")) {
-            self.advance();
             let expr = self.parse_expression(Precedence::Lowest)?;
             let following_kw = self.consume_keyword(TokenKind::Following)?;
             end_bound_keywords = vec![following_kw];
@@ -758,6 +818,19 @@ impl<'a> Parser<'a> {
 
             // self.advance();
             return Ok(expr);
+        } else if self.token_is_any(BUILTIN_FN_START) {
+            let fn_name = ast::Expression::Keyword(match self.peek_token {
+                Some(token) => ast::Keyword::try_from(token)?,
+                _ => unreachable!(),
+            });
+
+            self.advance();
+            // parse user defined function
+            if self.token_is(&TokenKind::LeftParen) {
+                return Ok(self.parse_function(fn_name)?);
+            }
+
+            unreachable!();
         }
 
         self.unexpected_token(vec!["expression".to_string()])
