@@ -356,7 +356,7 @@ impl fmt::Display for KeywordKind {
             KeywordKind::Offset => f.write_str("offset"),
             KeywordKind::On => f.write_str("on"),
             KeywordKind::Only => f.write_str("only"),
-            KeywordKind::Or => f.write_str("Or"),
+            KeywordKind::Or => f.write_str("or"),
             KeywordKind::Order => f.write_str("order"),
             KeywordKind::Outer => f.write_str("outer"),
             KeywordKind::Over => f.write_str("over"),
