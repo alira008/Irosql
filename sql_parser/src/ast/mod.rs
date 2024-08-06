@@ -5,6 +5,7 @@ mod keyword;
 
 use crate::token::Token;
 use core::fmt;
+use std::fmt::Write;
 use sql_lexer::Span;
 pub use keyword::{Keyword, KeywordKind};
 pub use expressions::*;
@@ -520,7 +521,8 @@ impl fmt::Display for Top {
             write!(f, " {}", percent)?;
         }
         if let Some(with_ties) = &self.with_ties {
-            display_list_delimiter_separated(with_ties, "", f)?;
+            f.write_str(" ")?;
+            display_list_delimiter_separated(with_ties, " ", f)?;
         }
 
         Ok(())

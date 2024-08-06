@@ -2,7 +2,6 @@ use super::{display_list_comma_separated, display_list_delimiter_separated, Data
 use crate::error::{parse_error, ParseError, ParseErrorType};
 use core::fmt;
 use sql_lexer::{Span, Token, TokenKind};
-use std::fmt::Write;
 
 #[derive(Debug, PartialEq, Clone)]
 pub struct ComparisonOperator {

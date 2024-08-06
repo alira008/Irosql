@@ -347,6 +347,11 @@ impl<'a> Parser<'a> {
         select_statement.distinct = self.maybe_keyword(TokenKind::Distinct);
         select_statement.all = self.maybe_keyword(TokenKind::All);
 
+        if let Some(kw) = self.maybe_keyword(TokenKind::Top) {
+            select_statement.top = Some(self.parse_top_clause(kw)?);
+        }
+        dbg!(self.peek_token);
+
         select_statement.columns = self.parse_select_items()?;
 
         if let Some(kw) = self.maybe_keyword(TokenKind::From) {
@@ -418,6 +423,37 @@ impl<'a> Parser<'a> {
         }
 
         Ok(columns)
+    }
+
+    fn parse_top_clause(&mut self, top_kw: Keyword) -> Result<ast::Top, ParseError<'a>> {
+        dbg!(self.peek_token);
+        let top_expr = match self.peek_token {
+            Some(token) => ast::Expression::try_from(token)?,
+            _ => unreachable!(),
+        };
+        match top_expr {
+            ast::Expression::NumberLiteral(_) => {},
+            _ => return self.unexpected_token(vec!["numeric literal".to_string()])
+        }
+
+        dbg!(self.peek_token);
+        self.advance();
+        let percent_kw = self.maybe_keyword(TokenKind::Percent);
+
+        dbg!(self.peek_token);
+        let with_ties_kw = if let Some(with_kw) = self.maybe_keyword(TokenKind::With) {
+            let ties_kw = self.consume_keyword(TokenKind::Ties)?;
+            Some(vec![with_kw, ties_kw])
+        } else {
+            None
+        };
+
+        Ok(ast::Top {
+            top: top_kw,
+            with_ties: with_ties_kw,
+            percent: percent_kw,
+            quantity: top_expr,
+        })
     }
 
     fn parse_compound_identifier(

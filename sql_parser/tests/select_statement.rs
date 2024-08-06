@@ -84,7 +84,8 @@ fn select_statement_with_builtin_fn() {
     lmao.bruhCalculate(bruh) as hello , yes from testtable";
     let mut expected_query = String::from("select name, sum(lastprice) over(partition by symbol,");
     expected_query += " insertdate order by inserttime desc rows between unbounded preceding ";
-    expected_query += "and current row), [dbo].lmao.bruhCalculate(bruh) as hello, yes from testtable";
+    expected_query +=
+        "and current row), [dbo].lmao.bruhCalculate(bruh) as hello, yes from testtable";
     let lexer = Lexer::new(input);
     let mut parser = Parser::new(lexer);
     let query = parser.parse();
@@ -116,6 +117,42 @@ fn select_statement_with_builtin_fn_three() {
     expected_query += " insertdate order by inserttime desc rows between 2 preceding ";
     expected_query += "and 242024 following), [dbo].lmao.bruhCalculate(bruh) as hello, yes";
     expected_query += " from testtable";
+    let lexer = Lexer::new(input);
+    let mut parser = Parser::new(lexer);
+    let query = parser.parse();
+
+    assert_eq!(expected_query, query.to_string());
+}
+
+#[test]
+fn select_statement_with_top() {
+    let input = r"SELECT distinct top 50 percent with ties  name, yes from testtable";
+    let mut expected_query = String::from("select distinct top 50 percent with ties name");
+    expected_query += ", yes from testtable";
+    let lexer = Lexer::new(input);
+    let mut parser = Parser::new(lexer);
+    let query = parser.parse();
+
+    assert_eq!(expected_query, query.to_string());
+}
+
+#[test]
+fn select_statement_with_top_two() {
+    let input = r"SELECT all top 12 percent   name, yes from testtable";
+    let mut expected_query = String::from("select all top 12 percent name");
+    expected_query += ", yes from testtable";
+    let lexer = Lexer::new(input);
+    let mut parser = Parser::new(lexer);
+    let query = parser.parse();
+
+    assert_eq!(expected_query, query.to_string());
+}
+
+#[test]
+fn select_statement_with_top_three() {
+    let input = r"SELECT top 213 with ties  name 'no', lastprice from testtable";
+    let mut expected_query = String::from("select top 213 with ties name 'no'");
+    expected_query += ", lastprice from testtable";
     let lexer = Lexer::new(input);
     let mut parser = Parser::new(lexer);
     let query = parser.parse();
