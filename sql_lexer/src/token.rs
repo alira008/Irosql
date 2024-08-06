@@ -310,7 +310,7 @@ impl<'a> TokenKind<'a> {
             (&TokenKind::Minus, &TokenKind::Minus) => true,
             (&TokenKind::ForwardSlash, &TokenKind::ForwardSlash) => true,
             (&TokenKind::Asterisk, &TokenKind::Asterisk) => true,
-            (&TokenKind::Percent, &TokenKind::Percent) => true,
+            (&TokenKind::PercentSign, &TokenKind::PercentSign) => true,
             (&TokenKind::Period, &TokenKind::Period) => true,
             (&TokenKind::SemiColon, &TokenKind::SemiColon) => true,
             (&TokenKind::Eof, &TokenKind::Eof) => true,
