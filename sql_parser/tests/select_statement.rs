@@ -159,3 +159,43 @@ fn select_statement_with_top_three() {
 
     assert_eq!(expected_query, query.to_string());
 }
+
+#[test]
+fn select_statement_with_where_clause() {
+    let input = r"SELECT Symbol, LastPrice, PC 'PercentChange' from MarketData where LastPrice
+    > 20.0 or [PercentChange] > 5";
+    let mut expected_query = String::from("select Symbol, LastPrice, PC 'PercentChange'");
+    expected_query += " from MarketData where LastPrice > 20.0 or [PercentChange] > 5";
+    let lexer = Lexer::new(input);
+    let mut parser = Parser::new(lexer);
+    let query = parser.parse();
+
+    assert_eq!(expected_query, query.to_string());
+}
+
+#[test]
+fn select_statement_with_where_clause_two() {
+    let input = r"SELECT Symbol, LastPrice, PC 'PercentChange' from MarketData where LastPrice
+    > 20.0 and [PercentChange] > 5";
+    let mut expected_query = String::from("select Symbol, LastPrice, PC 'PercentChange'");
+    expected_query += " from MarketData where LastPrice > 20.0 and [PercentChange] > 5";
+    let lexer = Lexer::new(input);
+    let mut parser = Parser::new(lexer);
+    let query = parser.parse();
+
+    assert_eq!(expected_query, query.to_string());
+}
+
+#[test]
+fn select_statement_with_where_clause_three() {
+    let input = r"SELECT Symbol, LastPrice, PC 'PercentChange' from MarketData where 
+    symbol = 'amzn' and LastPrice > 20.0 or [PercentChange] > 5";
+    let mut expected_query = String::from("select Symbol, LastPrice, PC 'PercentChange'");
+    expected_query += " from MarketData where symbol = 'amzn' and LastPrice > 20.0 or";
+    expected_query += " [PercentChange] > 5";
+    let lexer = Lexer::new(input);
+    let mut parser = Parser::new(lexer);
+    let query = parser.parse();
+
+    assert_eq!(expected_query, query.to_string());
+}

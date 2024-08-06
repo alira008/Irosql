@@ -7,6 +7,7 @@ const SELECT_ITEM_TYPE_START: &'static [TokenKind<'static>] = &[
     TokenKind::Identifier(""),
     TokenKind::QuotedIdentifier(""),
     TokenKind::NumberLiteral(""),
+    TokenKind::StringLiteral(""),
     TokenKind::LocalVariable(""),
     TokenKind::LeftParen,
     TokenKind::Asterisk,
@@ -358,6 +359,10 @@ impl<'a> Parser<'a> {
             select_statement.table = Some(self.parse_table_arg(kw)?);
         }
 
+        if let Some(kw) = self.maybe_keyword(TokenKind::Where) {
+            select_statement.where_clause = Some(self.parse_where_clause(kw)?);
+        }
+
         return Ok(select_statement);
     }
 
@@ -432,8 +437,8 @@ impl<'a> Parser<'a> {
             _ => unreachable!(),
         };
         match top_expr {
-            ast::Expression::NumberLiteral(_) => {},
-            _ => return self.unexpected_token(vec!["numeric literal".to_string()])
+            ast::Expression::NumberLiteral(_) => {}
+            _ => return self.unexpected_token(vec!["numeric literal".to_string()]),
         }
 
         dbg!(self.peek_token);
@@ -453,6 +458,18 @@ impl<'a> Parser<'a> {
             with_ties: with_ties_kw,
             percent: percent_kw,
             quantity: top_expr,
+        })
+    }
+
+    fn parse_where_clause(
+        &mut self,
+        where_kw: Keyword,
+    ) -> Result<ast::WhereClause, ParseError<'a>> {
+        let expression = self.parse_expression(Precedence::Lowest)?;
+
+        Ok(ast::WhereClause {
+            where_kw,
+            expression,
         })
     }
 
@@ -818,11 +835,12 @@ impl<'a> Parser<'a> {
         // or if it is a prefix operator
         let mut left_expression = self.parse_prefix_expression()?;
 
+        dbg!(&left_expression);
+        dbg!(self.peek_token);
+        dbg!(self.peek_precedence());
+        dbg!(precedence);
         // parse the infix expression
         while precedence < self.peek_precedence() {
-            // move to the next token
-            self.next_token();
-
             left_expression = self.parse_infix_expression(left_expression)?;
         }
 
@@ -867,6 +885,26 @@ impl<'a> Parser<'a> {
             }
 
             unreachable!();
+        } else if self.token_is_any(&[TokenKind::Minus, TokenKind::Plus]) {
+            let unary_op = match self.peek_token {
+                Some(token) => ast::UnaryOperator::try_from(token)?,
+                _ => unreachable!(),
+            };
+
+            self.advance();
+            let right_expr = match self.peek_token {
+                Some(token) => ast::Expression::try_from(token)?,
+                _ => unreachable!(),
+            };
+            match right_expr {
+                ast::Expression::NumberLiteral(_) => {}
+                _ => return self.unexpected_token(vec!["numeric literal".to_string()]),
+            }
+
+            return Ok(ast::Expression::Unary {
+                operator: unary_op,
+                right: Box::new(right_expr),
+            });
         }
 
         self.unexpected_token(vec!["expression".to_string()])
@@ -876,6 +914,54 @@ impl<'a> Parser<'a> {
         &mut self,
         left: ast::Expression,
     ) -> Result<ast::Expression, ParseError<'a>> {
+        if self.token_is(&TokenKind::And) {
+            let precedence = self.peek_precedence();
+            let and_kw = self.consume_keyword(TokenKind::And)?;
+            let right = self.parse_expression(precedence)?;
+
+            return Ok(ast::Expression::And {
+                and_kw,
+                left: Box::new(left),
+                right: Box::new(right),
+            });
+        } else if self.token_is(&TokenKind::Or) {
+            let precedence = self.peek_precedence();
+            let or_kw = self.consume_keyword(TokenKind::Or)?;
+            let right = self.parse_expression(precedence)?;
+
+            return Ok(ast::Expression::Or {
+                or_kw,
+                left: Box::new(left),
+                right: Box::new(right),
+            });
+        } else if self.token_is_any(&[
+            TokenKind::Equal,
+            TokenKind::BangEqual,
+            TokenKind::LessThanGreaterThan,
+            TokenKind::GreaterThan,
+            TokenKind::GreaterThanEqual,
+            TokenKind::LessThan,
+            TokenKind::LessThanEqual,
+        ]) {
+            let op = match self.peek_token {
+                Some(token) => ast::ComparisonOperator::try_from(token)?,
+                _ => unreachable!(),
+            };
+            let precedence = self.peek_precedence();
+
+            self.advance();
+            dbg!(self.peek_token);
+            let right = self.parse_expression(precedence)?;
+
+            dbg!(&left);
+            dbg!(&right);
+            return Ok(ast::Expression::Comparison {
+                operator: op,
+                left: Box::new(left),
+                right: Box::new(right),
+            });
+        }
+
         self.unexpected_token(vec!["expression".to_string()])
     }
 }

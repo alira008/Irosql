@@ -70,6 +70,16 @@ pub enum Expression {
         left: Box<Expression>,
         right: Box<Expression>,
     },
+    And {
+        and_kw: Keyword,
+        left: Box<Expression>,
+        right: Box<Expression>,
+    },
+    Or {
+        or_kw: Keyword,
+        left: Box<Expression>,
+        right: Box<Expression>,
+    },
     Comparison {
         operator: ComparisonOperator,
         left: Box<Expression>,
@@ -289,7 +299,7 @@ impl<'a> TryFrom<Token<'a>> for Expression {
 
 impl fmt::Display for Expression {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match &self {
+        match self {
             Expression::Arithmetic {
                 operator,
                 left,
@@ -301,6 +311,12 @@ impl fmt::Display for Expression {
                 right,
             } => write!(f, "{} {} {}", left, operator, right),
             Expression::Unary { operator, right } => write!(f, "{} {}", operator, right),
+            Expression::And {
+                and_kw,
+                left,
+                right,
+            } => write!(f, "{} {} {}", left, and_kw, right),
+            Expression::Or { or_kw, left, right } => write!(f, "{} {} {}", left, or_kw, right),
             Expression::ExpressionList(list) => {
                 f.write_str("(")?;
                 display_list_comma_separated(list, f)?;

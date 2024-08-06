@@ -146,7 +146,7 @@ pub struct SelectStatement {
     pub columns: Vec<SelectItem>,
     pub into_table: Option<IntoArg>,
     pub table: Option<TableArg>,
-    pub where_clause: Option<Expression>,
+    pub where_clause: Option<WhereClause>,
     pub group_by: Vec<Expression>,
     pub having: Option<Expression>,
     pub order_by: Vec<OrderByArg>,
@@ -166,6 +166,12 @@ pub struct Top {
     pub with_ties: Option<Vec<Keyword>>,
     pub percent: Option<Keyword>,
     pub quantity: Expression,
+}
+
+#[derive(Debug, PartialEq, Clone)]
+pub struct WhereClause {
+    pub where_kw: Keyword,
+    pub expression: Expression,
 }
 
 #[derive(Debug, PartialEq, Clone)]
@@ -480,7 +486,7 @@ impl fmt::Display for SelectStatement {
 
         // WHERE
         if let Some(where_clause) = &self.where_clause {
-            write!(f, " WHERE {}", where_clause)?;
+            write!(f, " {}", where_clause)?;
         }
 
         // GROUPING
@@ -524,6 +530,14 @@ impl fmt::Display for Top {
             f.write_str(" ")?;
             display_list_delimiter_separated(with_ties, " ", f)?;
         }
+
+        Ok(())
+    }
+}
+
+impl fmt::Display for WhereClause {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{} {}", self.where_kw, self.expression)?;
 
         Ok(())
     }
