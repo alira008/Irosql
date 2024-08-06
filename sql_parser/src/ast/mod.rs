@@ -1,4 +1,5 @@
 pub mod data_type;
+pub mod expressions;
 mod keyword;
 use crate::token::Token;
 use core::fmt;
@@ -6,6 +7,7 @@ use sql_lexer::Span;
 pub use keyword::{Keyword, KeywordKind};
 
 
+pub use expressions::*;
 pub use data_type::DataType;
 pub use data_type::NumericSize;
 
@@ -91,105 +93,6 @@ impl Query {
             statements: Vec::new(),
         }
     }
-}
-
-#[derive(Debug, PartialEq, Clone)]
-pub enum Expression {
-    Identifier(String),
-    QuotedIdentifier(String),
-    StringLiteral(String),
-    NumberLiteral(String),
-    LocalVariable(String),
-    Compound(Vec<Expression>),
-    Asterisk,
-    Literal(Token),
-    CompoundLiteral(Vec<Token>),
-    Binary {
-        left: Box<Expression>,
-        operator: Token,
-        right: Box<Expression>,
-    },
-    Unary {
-        operator: Token,
-        right: Box<Expression>,
-    },
-    Grouping(Box<Expression>),
-    Subquery(Box<SelectStatement>),
-    IsTrue(Box<Expression>),
-    IsNotTrue(Box<Expression>),
-    IsNull(Box<Expression>),
-    IsNotNull(Box<Expression>),
-    InList {
-        expression: Box<Expression>,
-        list: Vec<Expression>,
-        not: bool,
-    },
-    Between {
-        not: bool,
-        low: Box<Expression>,
-        high: Box<Expression>,
-    },
-    Any {
-        left: Box<Expression>,
-        operator: Token,
-        right: Box<Expression>,
-    },
-    All {
-        left: Box<Expression>,
-        operator: Token,
-        right: Box<Expression>,
-    },
-    Some {
-        left: Box<Expression>,
-        operator: Token,
-        right: Box<Expression>,
-    },
-    Exists(Box<Expression>),
-    ExpressionList(Vec<Expression>),
-    Function {
-        name: Box<FunctionName>,
-        args: Option<Vec<Expression>>,
-        over: Option<Box<OverClause>>,
-    },
-    Cast {
-        expression: Box<Expression>,
-        data_type: DataType,
-    },
-}
-
-#[derive(Debug, PartialEq, Clone)]
-pub enum FunctionName {
-    Builtin(Keyword),
-    User(Expression)
-}
-
-#[derive(Debug, PartialEq, Clone)]
-pub struct OverClause {
-    pub partition_by: Vec<Expression>,
-    pub order_by: Vec<OrderByArg>,
-    pub window_frame: Option<WindowFrame>,
-}
-
-#[derive(Debug, PartialEq, Clone, Copy)]
-pub enum RowsOrRange {
-    Rows,
-    Range,
-}
-
-#[derive(Debug, PartialEq, Clone)]
-pub enum WindowFrameBound {
-    CurrentRow,
-    Preceding(Expression),
-    Following(Expression),
-    UnboundedPreceding,
-    UnboundedFollowing,
-}
-
-#[derive(Debug, PartialEq, Clone)]
-pub struct WindowFrame {
-    pub rows_or_range: RowsOrRange,
-    pub start: WindowFrameBound,
-    pub end: Option<WindowFrameBound>,
 }
 
 #[derive(Debug, PartialEq, Clone)]
@@ -463,138 +366,6 @@ impl fmt::Display for Query {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         for statement in &self.statements {
             write!(f, "{}", statement)?;
-        }
-        Ok(())
-    }
-}
-
-impl fmt::Display for Expression {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match &self {
-            Expression::Literal(token) => write!(f, "{}", token),
-            Expression::CompoundLiteral(tokens) => display_list_delimiter_separated(tokens, ".", f),
-            Expression::Binary {
-                left,
-                operator,
-                right,
-            } => write!(f, "{} {} {}", left, operator, right),
-            Expression::Unary { operator, right } => write!(f, "{} {}", operator, right),
-            Expression::Grouping(expr) => write!(f, "({})", expr),
-            Expression::Subquery(subquery) => write!(f, "({})", subquery),
-            Expression::IsTrue(expr) => write!(f, "IS {}", expr),
-            Expression::IsNotTrue(expr) => write!(f, "IS NOT {}", expr),
-            Expression::IsNull(expr) => write!(f, "{} IS NULL", expr),
-            Expression::IsNotNull(expr) => write!(f, "{} IS NOT NULL", expr),
-            Expression::InList {
-                expression,
-                list,
-                not,
-            } => {
-                write!(f, "{}", expression)?;
-                f.write_str(if *not { " NOT IN " } else { " IN " })?;
-                f.write_str("( ")?;
-                display_list_comma_separated(list, f)?;
-                f.write_str(" )")?;
-                Ok(())
-            }
-            Expression::Between { not, low, high } => write!(
-                f,
-                "{} BETWEEN {} AND {}",
-                if *not { "NOT" } else { "" },
-                low,
-                high
-            ),
-            Expression::Any {
-                left,
-                operator,
-                right,
-            } => write!(f, "{} {} ANY {}", left, operator, right),
-            Expression::All {
-                left,
-                operator,
-                right,
-            } => write!(f, "{} {} ALL {}", left, operator, right),
-            Expression::Some {
-                left,
-                operator,
-                right,
-            } => write!(f, "{} {} SOME {}", left, operator, right),
-            Expression::Exists(expr) => write!(f, "EXISTS {}", expr),
-            Expression::ExpressionList(list) => {
-                f.write_str("(")?;
-                display_list_comma_separated(list, f)?;
-                f.write_str(")")?;
-
-                Ok(())
-            }
-            Expression::Function { name, args, over } => {
-                write!(f, "{}{}", name, args)?;
-                if let Some(over_clause) = over {
-                    write!(f, " OVER({})", over_clause)?;
-                }
-                Ok(())
-            }
-            Expression::Cast {
-                expression,
-                data_type,
-            } => write!(f, "CAST({} as {})", expression, data_type),
-            Expression::Identifier(v) => write!(f, "{}", v),
-            Expression::QuotedIdentifier(v) => write!(f, "{}", v),
-            Expression::StringLiteral(v) => write!(f, "{}", v),
-            Expression::NumberLiteral(v) => write!(f, "{}", v),
-            Expression::LocalVariable(v) => write!(f, "{}", v),
-            Expression::Compound(v) => display_list_delimiter_separated(v, ".", f),
-            Expression::Asterisk => write!(f, "*"),
-        }
-    }
-}
-
-impl fmt::Display for WindowFrameBound {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match &self {
-            WindowFrameBound::CurrentRow => write!(f, "CURRENT ROW"),
-            WindowFrameBound::Preceding(expr) => write!(f, "{} PRECEDING", expr),
-            WindowFrameBound::Following(expr) => write!(f, "{} FOLLOWING", expr),
-            WindowFrameBound::UnboundedPreceding => write!(f, "UNBOUNDED PRECEDING"),
-            WindowFrameBound::UnboundedFollowing => write!(f, "UNBOUNDED FOLLOWING"),
-        }
-    }
-}
-
-impl fmt::Display for RowsOrRange {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match &self {
-            RowsOrRange::Rows => write!(f, "ROWS"),
-            RowsOrRange::Range => write!(f, "RANGE"),
-        }
-    }
-}
-
-impl fmt::Display for WindowFrame {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{}", self.rows_or_range)?;
-        if let Some(end) = &self.end {
-            write!(f, " BETWEEN {}", self.start)?;
-            write!(f, " AND {}", end)?;
-        } else {
-            write!(f, " {}", self.start)?;
-        }
-        Ok(())
-    }
-}
-
-impl fmt::Display for OverClause {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        if !self.partition_by.is_empty() {
-            write!(f, "PARTITION BY ")?;
-            display_list_comma_separated(&self.partition_by, f)?;
-        }
-        if !self.order_by.is_empty() {
-            write!(f, "ORDER BY ")?;
-            display_list_comma_separated(&self.order_by, f)?;
-        }
-        if let Some(window_frame) = &self.window_frame {
-            write!(f, "{}", window_frame)?;
         }
         Ok(())
     }
