@@ -1,11 +1,8 @@
-use core::fmt;
-use std::fmt::Write;
-
-use sql_lexer::{Span, Token, TokenKind};
-
-use crate::error::{parse_error, ParseError, ParseErrorType};
-
 use super::{display_list_comma_separated, display_list_delimiter_separated, DataType, Keyword};
+use crate::error::{parse_error, ParseError, ParseErrorType};
+use core::fmt;
+use sql_lexer::{Span, Token, TokenKind};
+use std::fmt::Write;
 
 #[derive(Debug, PartialEq, Clone)]
 pub struct ComparisonOperator {
@@ -32,16 +29,30 @@ pub struct Literal {
 }
 
 #[derive(Debug, PartialEq, Clone)]
+pub struct OrderByArg {
+    pub column: Expression,
+    pub order_kw: Option<Keyword>,
+}
+
+#[derive(Debug, PartialEq, Clone)]
 pub struct OverClause {
+    pub over_kw: Keyword,
+    pub partition_by_kws: Option<Vec<Keyword>>,
     pub partition_by: Vec<Expression>,
-    // pub order_by: Vec<OrderByArg>,
+    pub order_by_kws: Option<Vec<Keyword>>,
+    pub order_by: Vec<OrderByArg>,
     pub window_frame: Option<WindowFrame>,
 }
 
 #[derive(Debug, PartialEq, Clone)]
 pub struct WindowFrame {
     pub rows_or_range: RowsOrRange,
+    pub rows_or_range_kw: Keyword,
+    pub start_bound_keywords: Vec<Keyword>,
     pub start: WindowFrameBound,
+    pub between_kw: Option<Keyword>,
+    pub and_kw: Option<Keyword>,
+    pub end_bound_keywords: Option<Vec<Keyword>>,
     pub end: Option<WindowFrameBound>,
 }
 
@@ -149,7 +160,6 @@ impl fmt::Display for ComparisonOperator {
         }
     }
 }
-
 
 impl<'a> TryFrom<Token<'a>> for ComparisonOperator {
     type Error = ParseError<'a>;
@@ -259,6 +269,25 @@ impl fmt::Display for Literal {
     }
 }
 
+impl<'a> TryFrom<Token<'a>> for Expression {
+    type Error = ParseError<'a>;
+
+    fn try_from(value: Token<'a>) -> Result<Self, Self::Error> {
+        let expr = match value.kind() {
+            TokenKind::Identifier(_) => Expression::Identifier(Literal::try_from(value)?),
+            TokenKind::QuotedIdentifier(_) => {
+                Expression::QuotedIdentifier(Literal::try_from(value)?)
+            }
+            TokenKind::NumberLiteral(_) => Expression::NumberLiteral(Literal::try_from(value)?),
+            TokenKind::StringLiteral(_) => Expression::StringLiteral(Literal::try_from(value)?),
+            TokenKind::LocalVariable(_) => Expression::LocalVariable(Literal::try_from(value)?),
+            TokenKind::Asterisk => Expression::Asterisk,
+            _ => return parse_error(ParseErrorType::ExpectedKeyword),
+        };
+        Ok(expr)
+    }
+}
+
 impl fmt::Display for Expression {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match &self {
@@ -282,8 +311,13 @@ impl fmt::Display for Expression {
             }
             Expression::Function { name, args, over } => {
                 write!(f, "{}", name)?;
+                f.write_str("(")?;
+                if let Some(args_vec) = args {
+                    display_list_comma_separated(args_vec, f)?;
+                }
+                f.write_str(")")?;
                 if let Some(over_clause) = over {
-                    write!(f, " OVER({})", over_clause)?;
+                    write!(f, "{}", over_clause)?;
                 }
                 Ok(())
             }
@@ -335,32 +369,79 @@ impl fmt::Display for RowsOrRange {
     }
 }
 
+impl fmt::Display for OrderByArg {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match &self.order_kw {
+            Some(kw) => write!(f, "{} {}", self.column, kw),
+            None => write!(f, "{}", self.column),
+        }
+    }
+}
+
 impl fmt::Display for WindowFrame {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{}", self.rows_or_range)?;
-        if let Some(end) = &self.end {
-            write!(f, " BETWEEN {}", self.start)?;
-            write!(f, " AND {}", end)?;
-        } else {
-            write!(f, " {}", self.start)?;
+        write!(f, " {}", self.rows_or_range_kw)?;
+        if let Some(between_kw) = self.between_kw {
+            write!(f, " {}", between_kw)?;
         }
+        match &self.start {
+            WindowFrameBound::Preceding(expr) | WindowFrameBound::Following(expr) => {
+                write!(f, " {} ", expr,)?;
+                display_list_delimiter_separated(&self.start_bound_keywords, " ", f)?;
+            }
+            WindowFrameBound::CurrentRow
+            | WindowFrameBound::UnboundedPreceding
+            | WindowFrameBound::UnboundedFollowing => {
+                display_list_delimiter_separated(&self.start_bound_keywords, " ", f)?
+            }
+        }
+        if let Some(and_kw) = self.and_kw {
+            write!(f, " {}", and_kw)?;
+        }
+
+        if let (Some(end), Some(end_bound_keywords)) = (&self.end, &self.end_bound_keywords) {
+            match end {
+                WindowFrameBound::Preceding(expr) | WindowFrameBound::Following(expr) => {
+                    write!(f, " {} ", expr,)?;
+                    display_list_delimiter_separated(&end_bound_keywords, " ", f)?;
+                }
+                WindowFrameBound::CurrentRow
+                | WindowFrameBound::UnboundedPreceding
+                | WindowFrameBound::UnboundedFollowing => {
+                    display_list_delimiter_separated(&end_bound_keywords, " ", f)?
+                }
+            }
+        }
+
         Ok(())
     }
 }
 
 impl fmt::Display for OverClause {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, " {}", self.over_kw)?;
+        f.write_str("(")?;
+        if let Some(partition_by_kws) = &self.partition_by_kws {
+            display_list_delimiter_separated(&partition_by_kws, " ", f)?;
+        }
         if !self.partition_by.is_empty() {
-            write!(f, "PARTITION BY ")?;
             display_list_comma_separated(&self.partition_by, f)?;
         }
+
+        if !self.partition_by.is_empty() && !self.order_by.is_empty() {
+            f.write_str(" ");
+        }
+
+        if let Some(order_by_kws) = &self.order_by_kws {
+            display_list_delimiter_separated(&order_by_kws, " ", f)?;
+        }
         if !self.order_by.is_empty() {
-            write!(f, "ORDER BY ")?;
             display_list_comma_separated(&self.order_by, f)?;
         }
         if let Some(window_frame) = &self.window_frame {
             write!(f, "{}", window_frame)?;
         }
+        f.write_str(")")?;
         Ok(())
     }
 }

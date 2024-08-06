@@ -1,13 +1,14 @@
-pub mod data_type;
-pub mod expressions;
+mod data_type;
+mod expressions;
+mod utils;
 mod keyword;
+
 use crate::token::Token;
 use core::fmt;
 use sql_lexer::Span;
 pub use keyword::{Keyword, KeywordKind};
-
-
 pub use expressions::*;
+pub use utils::*;
 pub use data_type::DataType;
 pub use data_type::NumericSize;
 
@@ -223,12 +224,6 @@ pub struct TableArg {
 }
 
 #[derive(Debug, PartialEq, Clone)]
-pub struct OrderByArg {
-    pub column: Expression,
-    pub asc: Option<bool>,
-}
-
-#[derive(Debug, PartialEq, Clone)]
 pub struct OffsetArg {
     pub value: Expression,
     // either ROW or ROWS
@@ -254,31 +249,6 @@ pub struct FetchArg {
 pub enum NextOrFirst {
     Next,
     First,
-}
-
-fn display_list_comma_separated<T>(list: &[T], f: &mut fmt::Formatter) -> fmt::Result
-where
-    T: fmt::Display,
-{
-    display_list_delimiter_separated(list, ", ", f)
-}
-
-fn display_list_delimiter_separated<T>(
-    list: &[T],
-    delimeter: &str,
-    f: &mut fmt::Formatter,
-) -> fmt::Result
-where
-    T: fmt::Display,
-{
-    for (i, item) in list.iter().enumerate() {
-        write!(f, "{}", item)?;
-
-        if i < list.len() - 1 {
-            write!(f, "{delimeter}")?;
-        }
-    }
-    Ok(())
 }
 
 impl fmt::Display for CommonTableExpression {
@@ -475,11 +445,16 @@ impl fmt::Display for UpdateStatement {
 impl fmt::Display for SelectStatement {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         // SELECT
-        f.write_str("SELECT ")?;
+        write!(f, "{}", self.select)?;
 
         // DISTINCT
         if let Some(distinct) = &self.distinct {
-            write!(f, "{} ", distinct)?;
+            write!(f, " {}", distinct)?;
+        }
+
+        // ALL
+        if let Some(distinct) = &self.all {
+            write!(f, " {}", distinct)?;
         }
 
         // TOP
@@ -499,7 +474,7 @@ impl fmt::Display for SelectStatement {
 
         // FROM
         if let Some(table) = &self.table {
-            write!(f, " FROM {}", table)?;
+            write!(f, " {}", table)?;
         }
 
         // WHERE
@@ -634,22 +609,12 @@ impl fmt::Display for Join {
 }
 impl fmt::Display for TableArg {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{}", self.table)?;
+        write!(f, "{} {}", self.from, self.table)?;
 
         for join in &self.joins {
             write!(f, " {}", join)?;
         }
         Ok(())
-    }
-}
-
-impl fmt::Display for OrderByArg {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match &self.asc {
-            Some(true) => write!(f, "{} ASC", self.column),
-            Some(false) => write!(f, "{} DESC", self.column),
-            None => write!(f, "{}", self.column),
-        }
     }
 }
 

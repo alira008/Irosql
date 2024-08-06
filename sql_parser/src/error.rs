@@ -12,6 +12,11 @@ pub enum ParseErrorType<'a> {
     ExpectedKeyword,
     ExpectedFunctionName,
     EmptySelectColumns,
+    EmptyPartitionByClause,
+    EmptyOrderByArgs,
+    MissingRowsOrRangeInWindowFrameClause,
+    ExpectedUnboundedPrecedingCurrentRowOrNumberPreceding,
+    ExpectedUnboundedPrecedingCurrentRowOrNumberFollowing,
     InvalidOrUnimplementedStatement,
 }
 
