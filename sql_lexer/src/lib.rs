@@ -169,10 +169,20 @@ impl<'a> Lexer<'a> {
                 '(' => TokenKind::LeftParen,
                 ')' => TokenKind::RightParen,
                 '=' => TokenKind::Equal,
-                '!' if self.chars.peek().is_some_and(|c| c == &'=') => TokenKind::BangEqual,
-                '<' if self.chars.peek().is_some_and(|c| c == &'=') => TokenKind::LessThanEqual,
-                '>' if self.chars.peek().is_some_and(|c| c == &'=') => TokenKind::GreaterThanEqual,
+                '!' if self.chars.peek().is_some_and(|c| c == &'=') => {
+                    self.read_char();
+                    TokenKind::BangEqual
+                }
+                '<' if self.chars.peek().is_some_and(|c| c == &'=') => {
+                    self.read_char();
+                    TokenKind::LessThanEqual
+                }
+                '>' if self.chars.peek().is_some_and(|c| c == &'=') => {
+                    self.read_char();
+                    TokenKind::GreaterThanEqual
+                }
                 '<' if self.chars.peek().is_some_and(|c| c == &'>') => {
+                    self.read_char();
                     TokenKind::LessThanGreaterThan
                 }
                 '<' => TokenKind::LessThan,
