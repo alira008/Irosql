@@ -199,3 +199,17 @@ fn select_statement_with_where_clause_three() {
 
     assert_eq!(expected_query, query.to_string());
 }
+
+#[test]
+fn select_statement_with_where_clause_three_with_cast() {
+    let input = r"SELECT Symbol, LastPrice, PC 'PercentChange' from MarketData where 
+    symbol = 'amzn' and LastPrice > 20.0 and cast(getdate() as date)";
+    let mut expected_query = String::from("select Symbol, LastPrice, PC 'PercentChange'");
+    expected_query += " from MarketData where symbol = 'amzn' and LastPrice > 20.0 and";
+    expected_query += " cast(getdate() as date)";
+    let lexer = Lexer::new(input);
+    let mut parser = Parser::new(lexer);
+    let query = parser.parse();
+
+    assert_eq!(expected_query, query.to_string());
+}

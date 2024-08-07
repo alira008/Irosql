@@ -905,6 +905,8 @@ impl<'a> Parser<'a> {
                 operator: unary_op,
                 right: Box::new(right_expr),
             });
+        } else if self.token_is(&TokenKind::Cast) {
+            // let expr = self.parse_case_exp
         }
 
         self.unexpected_token(vec!["expression".to_string()])
