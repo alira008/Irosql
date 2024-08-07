@@ -25,12 +25,6 @@ pub enum ExecOrExecute {
 }
 
 #[derive(Debug, PartialEq, Clone)]
-pub struct ProcedureParameter {
-    pub name: Option<Token>,
-    pub value: Expression,
-}
-
-#[derive(Debug, PartialEq, Clone)]
 pub enum CommonTableExpressionStatement {
     Select(SelectStatement),
     Insert(InsertStatement),
@@ -54,9 +48,9 @@ pub enum Statement {
         value: Expression,
     },
     Execute {
-        keyword: ExecOrExecute,
+        exec_kw: Keyword,
         procedure_name: Expression,
-        parameters: Vec<ProcedureParameter>,
+        parameters: Vec<Expression>,
     },
 }
 
@@ -287,15 +281,6 @@ impl fmt::Display for ExecOrExecute {
     }
 }
 
-impl fmt::Display for ProcedureParameter {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        if let Some(name) = &self.name {
-            write!(f, "{} = ", name)?;
-        }
-        write!(f, "{}", &self.value)
-    }
-}
-
 impl fmt::Display for CommonTableExpressionStatement {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match &self {
@@ -322,11 +307,11 @@ impl fmt::Display for Statement {
             }
             Statement::SetLocalVariable { name, value } => write!(f, "SET {} = {}", name, value),
             Statement::Execute {
-                keyword,
+                exec_kw,
                 procedure_name,
                 parameters,
             } => {
-                write!(f, "{} {}", keyword, procedure_name)?;
+                write!(f, "{} {}", exec_kw, procedure_name)?;
                 display_list_comma_separated(parameters, f)
             }
             Statement::Insert(insert) => write!(f, "{}", insert),

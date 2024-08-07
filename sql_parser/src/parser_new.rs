@@ -377,11 +377,29 @@ impl<'a> Parser<'a> {
                 // Keyword::WITH => return self.parse_cte_statement(),
                 // Keyword::DECLARE => return self.parse_declare_statement(),
                 // Keyword::SET => return self.parse_set_local_variable_statement(),
-                // Keyword::EXEC | Keyword::EXECUTE => return self.parse_execute_statement(),
+                TokenKind::Exec | TokenKind::Execute => return self.parse_execute_statement(),
                 _ => return parse_error(ParseErrorType::ExpectedKeyword),
             },
             None => todo!(),
         }
+    }
+
+    fn parse_execute_statement(&mut self) -> Result<ast::Statement, ParseError<'a>> {
+        let exec_kw = if let Some(kw) = self.maybe_keyword(TokenKind::Exec) {
+            kw
+        } else {
+            self.consume_keyword(TokenKind::Execute)?
+        };
+
+        // get the procedure name
+        let procedure_name = ast::Expression::try_from(self.peek_token)?;
+        let args = self.parse_function_args()?;
+
+        Ok(ast::Statement::Execute {
+            exec_kw,
+            procedure_name,
+            parameters: args,
+        })
     }
 
     fn parse_select_statement(&mut self) -> Result<ast::SelectStatement, ParseError<'a>> {
@@ -1330,7 +1348,7 @@ impl<'a> Parser<'a> {
                 });
                 break;
             } else if self.token_is(&TokenKind::End) {
-                break
+                break;
             }
         }
 
