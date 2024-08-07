@@ -370,3 +370,39 @@ fn select_statement_with_where_and_in_subquery() {
 
     assert_eq!(expected_query, query.to_string());
 }
+
+#[test]
+fn select_statement_with_where_and_between() {
+    let input = r"SELECT Symbol, LastPrice, PercentChange, (select Top 1 Exchange from
+    MarketIndices mi where mi.Symbol = m.Symbol) 'TopExchange', OpenPrice from Market m
+    where Symbol in (select Symbol from MarketData where QuoteDate = cast('1-3-24' as date))
+    and [PercentChange] between 0.56 and 2.4";
+    let mut expected_query = String::from("select Symbol, LastPrice, PercentChange, (select ");
+    expected_query += "top 1 Exchange from MarketIndices mi where mi.Symbol = m.Symbol) ";
+    expected_query += "'TopExchange', OpenPrice from Market m where Symbol in (select Symbol ";
+    expected_query += "from MarketData where QuoteDate = cast('1-3-24' as date)) and ";
+    expected_query += "[PercentChange] between 0.56 and 2.4";
+    let lexer = Lexer::new(input);
+    let mut parser = Parser::new(lexer);
+    let query = parser.parse();
+
+    assert_eq!(expected_query, query.to_string());
+}
+
+#[test]
+fn select_statement_with_where_and_not_between() {
+    let input = r"SELECT Symbol, LastPrice, PercentChange, (select Top 1 Exchange from
+    MarketIndices mi where mi.Symbol = m.Symbol) 'TopExchange', OpenPrice from Market m
+    where Symbol in (select Symbol from MarketData where QuoteDate = cast('1-3-24' as date))
+    and [PercentChange] nOT between 0.56 and 2.4";
+    let mut expected_query = String::from("select Symbol, LastPrice, PercentChange, (select ");
+    expected_query += "top 1 Exchange from MarketIndices mi where mi.Symbol = m.Symbol) ";
+    expected_query += "'TopExchange', OpenPrice from Market m where Symbol in (select Symbol ";
+    expected_query += "from MarketData where QuoteDate = cast('1-3-24' as date)) and ";
+    expected_query += "[PercentChange] not between 0.56 and 2.4";
+    let lexer = Lexer::new(input);
+    let mut parser = Parser::new(lexer);
+    let query = parser.parse();
+
+    assert_eq!(expected_query, query.to_string());
+}

@@ -1244,6 +1244,26 @@ impl<'a> Parser<'a> {
         Ok(expr)
     }
 
+    fn parse_between_expression(
+        &mut self,
+        test_expression: ast::Expression,
+        not_kw: Option<Keyword>,
+        between_kw: Keyword,
+    ) -> Result<ast::Expression, ParseError<'a>> {
+        let begin = self.parse_prefix_expression()?;
+        let and_kw = self.consume_keyword(TokenKind::And)?;
+        let end = self.parse_prefix_expression()?;
+
+        Ok(ast::Expression::Between {
+            test_expression: Box::new(test_expression),
+            not_kw,
+            between_kw,
+            begin: Box::new(begin),
+            and_kw,
+            end: Box::new(end),
+        })
+    }
+
     fn parse_expression(
         &mut self,
         precedence: Precedence,
@@ -1397,10 +1417,15 @@ impl<'a> Parser<'a> {
         } else if self.token_is(&TokenKind::In) {
             let in_kw = self.consume_keyword(TokenKind::In)?;
             return Ok(self.parse_in_expression(left, in_kw, None)?);
+        } else if self.token_is(&TokenKind::Between) {
+            let between_kw = self.consume_keyword(TokenKind::Between)?;
+            return Ok(self.parse_between_expression(left, None, between_kw)?);
         } else if self.token_is(&TokenKind::Not) {
             let not_kw = self.consume_keyword(TokenKind::Not)?;
             if let Some(in_kw) = self.maybe_keyword(TokenKind::In) {
                 return Ok(self.parse_in_expression(left, in_kw, Some(not_kw))?);
+            } else if let Some(between_kw) = self.maybe_keyword(TokenKind::Between) {
+                return Ok(self.parse_between_expression(left, Some(not_kw), between_kw)?);
             } else {
                 return parse_error(ParseErrorType::ExpectedSubqueryOrExpressionList);
             }

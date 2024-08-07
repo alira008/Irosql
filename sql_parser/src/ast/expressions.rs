@@ -1,4 +1,7 @@
-use super::{display_list_comma_separated, display_list_delimiter_separated, DataType, Keyword, SelectStatement};
+use super::{
+    display_list_comma_separated, display_list_delimiter_separated, DataType, Keyword,
+    SelectStatement,
+};
 use crate::error::{parse_error, ParseError, ParseErrorType};
 use core::fmt;
 use sql_lexer::{Span, Token, TokenKind};
@@ -113,6 +116,14 @@ pub enum Expression {
         subquery: Box<Expression>,
     },
     Subquery(Box<SelectStatement>),
+    Between {
+        test_expression: Box<Expression>,
+        not_kw: Option<Keyword>,
+        between_kw: Keyword,
+        begin: Box<Expression>,
+        and_kw: Keyword,
+        end: Box<Expression>,
+    },
 }
 
 #[derive(Debug, PartialEq, Clone, Copy)]
@@ -446,6 +457,22 @@ impl fmt::Display for Expression {
                     write!(f, " {}", kw)?;
                 }
                 write!(f, " {} {}", in_kw, subquery)?;
+
+                Ok(())
+            }
+            Expression::Between {
+                test_expression,
+                not_kw,
+                between_kw,
+                begin,
+                and_kw,
+                end,
+            } => {
+                write!(f, "{}", test_expression)?;
+                if let Some(kw) = not_kw {
+                    write!(f, " {}", kw)?;
+                }
+                write!(f, " {} {} {} {}", between_kw, begin, and_kw, end)?;
 
                 Ok(())
             }
