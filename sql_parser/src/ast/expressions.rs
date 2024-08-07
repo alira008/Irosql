@@ -156,6 +156,17 @@ pub enum Expression {
         like_kw: Keyword,
         pattern: Box<Expression>,
     },
+    SimpleCase {
+        case_kw: Keyword,
+        input_expression: Box<Expression>,
+        conditions: Vec<CaseCondition>,
+        end_kw: Keyword,
+    },
+    SearchedCase {
+        case_kw: Keyword,
+        conditions: Vec<CaseCondition>,
+        end_kw: Keyword,
+    },
 }
 
 #[derive(Debug, PartialEq, Clone, Copy)]
@@ -203,6 +214,20 @@ pub enum WindowFrameBound {
     Following(Expression),
     UnboundedPreceding,
     UnboundedFollowing,
+}
+
+#[derive(Debug, PartialEq, Clone)]
+pub enum CaseCondition {
+    WhenCondition {
+        when_kw: Keyword,
+        when_expression: Expression,
+        then_kw: Keyword,
+        result_expression: Expression,
+    },
+    ElseCondition {
+        else_kw: Keyword,
+        result_expression: Expression,
+    },
 }
 
 impl ComparisonOperator {
@@ -565,6 +590,50 @@ impl fmt::Display for Expression {
 
                 Ok(())
             }
+            Expression::SimpleCase {
+                case_kw,
+                input_expression,
+                conditions,
+                end_kw,
+            } => {
+                write!(f, "{} {} ", case_kw, input_expression)?;
+                display_list_delimiter_separated(conditions, " ", f)?;
+                write!(f, " {}", end_kw)?;
+
+                Ok(())
+            }
+            Expression::SearchedCase {
+                case_kw,
+                conditions,
+                end_kw,
+            } => {
+                write!(f, "{} ", case_kw)?;
+                display_list_delimiter_separated(conditions, " ", f)?;
+                write!(f, " {}", end_kw)?;
+
+                Ok(())
+            }
+        }
+    }
+}
+
+impl fmt::Display for CaseCondition {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match &self {
+            CaseCondition::WhenCondition {
+                when_kw,
+                when_expression,
+                then_kw,
+                result_expression,
+            } => write!(
+                f,
+                "{} {} {} {}",
+                when_kw, when_expression, then_kw, result_expression
+            ),
+            CaseCondition::ElseCondition {
+                else_kw,
+                result_expression,
+            } => write!(f, "{} {}", else_kw, result_expression),
         }
     }
 }

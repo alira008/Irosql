@@ -482,3 +482,18 @@ fn select_statement_with_where_and_like_expression_two() {
 
     assert_eq!(expected_query, query.to_string());
 }
+
+#[test]
+fn select_statement_with_case_statement() {
+    let input = r"SELECT Symbol, LastPrice, PercentChange, case Exchange when 'nsdq' then 'Nasdaq'
+    when 'dji' then 'Dow Jones' else 'SP500' end from Market m where Symbol not like
+    @TestPattern and LastPrice > 32";
+    let mut expected_query = String::from("select Symbol, LastPrice, PercentChange, case Exchange");
+    expected_query += " when 'nsdq' then 'Nasdaq' when 'dji' then 'Dow Jones' else 'SP500' end";
+    expected_query += " from Market m where Symbol not like @TestPattern and LastPrice > 32";
+    let lexer = Lexer::new(input);
+    let mut parser = Parser::new(lexer);
+    let query = parser.parse();
+
+    assert_eq!(expected_query, query.to_string());
+}

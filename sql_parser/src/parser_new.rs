@@ -10,6 +10,7 @@ const SELECT_ITEM_TYPE_START: &'static [TokenKind<'static>] = &[
     TokenKind::StringLiteral(""),
     TokenKind::LocalVariable(""),
     TokenKind::LeftParen,
+    TokenKind::Case,
     TokenKind::Asterisk,
     TokenKind::Minus,
     TokenKind::Plus,
@@ -1280,6 +1281,62 @@ impl<'a> Parser<'a> {
         })
     }
 
+    fn parse_case_expression(&mut self) -> Result<ast::Expression, ParseError<'a>> {
+        dbg!(self.peek_token);
+        let case_kw = self.consume_keyword(TokenKind::Case)?;
+        dbg!(&case_kw);
+        if self.token_is(&TokenKind::When) {
+            let conditions = self.parse_case_expressions()?;
+            let end_kw = self.consume_keyword(TokenKind::End)?;
+            Ok(ast::Expression::SearchedCase {
+                case_kw,
+                conditions,
+                end_kw,
+            })
+        } else {
+            let input_expr = self.parse_expression(Precedence::Lowest)?;
+            let conditions = self.parse_case_expressions()?;
+            let end_kw = self.consume_keyword(TokenKind::End)?;
+            Ok(ast::Expression::SimpleCase {
+                case_kw,
+                input_expression: Box::new(input_expr),
+                conditions,
+                end_kw,
+            })
+        }
+    }
+
+    fn parse_case_expressions(&mut self) -> Result<Vec<ast::CaseCondition>, ParseError<'a>> {
+        let mut conditions = vec![];
+
+        loop {
+            let when_kw = self.consume_keyword(TokenKind::When)?;
+            let when_expr = self.parse_expression(Precedence::Lowest)?;
+            let then_kw = self.consume_keyword(TokenKind::Then)?;
+            let result_expr = self.parse_expression(Precedence::Lowest)?;
+
+            conditions.push(ast::CaseCondition::WhenCondition {
+                when_kw,
+                when_expression: when_expr,
+                then_kw,
+                result_expression: result_expr,
+            });
+
+            if let Some(else_kw) = self.maybe_keyword(TokenKind::Else) {
+                let result_expr = self.parse_expression(Precedence::Lowest)?;
+                conditions.push(ast::CaseCondition::ElseCondition {
+                    else_kw,
+                    result_expression: result_expr,
+                });
+                break;
+            } else if self.token_is(&TokenKind::End) {
+                break
+            }
+        }
+
+        Ok(conditions)
+    }
+
     fn parse_expression(
         &mut self,
         precedence: Precedence,
@@ -1371,6 +1428,10 @@ impl<'a> Parser<'a> {
                 exists_kw,
                 subquery: Box::new(subquery),
             });
+        } else if self.token_is(&TokenKind::Case) {
+            dbg!("hello");
+            let case_expr = self.parse_case_expression()?;
+            return Ok(case_expr);
         }
 
         self.unexpected_token(vec!["expression".to_string()])
