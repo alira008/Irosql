@@ -259,7 +259,7 @@ impl<'a> Parser<'a> {
                 // TokenKind::WITH => return self.parse_cte_statement(),
                 // TokenKind::DECLARE => return self.parse_declare_statement(),
                 // TokenKind::SET => return self.parse_set_local_variable_statement(),
-                // TokenKind::Exec | TokenKind::Execute => return self.parse_execute_statement(),
+                TokenKind::Exec | TokenKind::Execute => return self.parse_execute_statement(),
                 _ => return parse_error(ParseErrorType::ExpectedKeyword),
             },
             None => todo!(),
@@ -275,13 +275,63 @@ impl<'a> Parser<'a> {
 
         // get the procedure name
         let procedure_name = ast::Expression::try_from(self.peek_token)?;
-        let args = self.parse_function_args()?;
+        dbg!(self.peek_token);
+        self.advance();
+        dbg!(self.peek_token);
+        let parameters = self.parse_procedure_parameters()?;
 
         Ok(ast::Statement::Execute {
             exec_kw,
             procedure_name,
-            parameters: args,
+            parameters,
         })
+    }
+
+    fn parse_procedure_parameters(
+        &mut self,
+    ) -> Result<Vec<ast::ProcedureParameter>, ParseError<'a>> {
+        let mut params = vec![];
+
+        loop {
+            let name = if self.token_is(&TokenKind::LocalVariable("")) {
+                let tok = self.peek_token;
+                self.advance();
+                if self.token_is(&TokenKind::Equal) {
+                    self.advance();
+                    dbg!(self.peek_token);
+                    let name = ast::ProcedureParameterName::try_from(tok)?;
+                    Some(name)
+                } else {
+                    let expr = ast::Expression::try_from(tok)?;
+                    params.push(ast::ProcedureParameter {
+                        name: None,
+                        value: expr,
+                    });
+
+                    dbg!(self.peek_token);
+                    dbg!(self.peek_token);
+
+                    if !self.token_is(&TokenKind::Comma) {
+                        break;
+                    }
+                    self.advance();
+                    continue;
+                }
+            } else {
+                None
+            };
+            let expr = ast::Expression::try_from(self.peek_token)?;
+            params.push(ast::ProcedureParameter { name, value: expr });
+
+            self.advance();
+
+            if !self.token_is(&TokenKind::Comma) {
+                break;
+            }
+            self.advance()
+        }
+
+        Ok(params)
     }
 
     fn parse_select_statement(&mut self) -> Result<ast::SelectStatement, ParseError<'a>> {

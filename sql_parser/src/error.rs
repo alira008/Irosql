@@ -22,6 +22,7 @@ pub enum ParseErrorType<'a> {
     MissingAliasAfterAsKeyword,
     ExpectedUnboundedPrecedingCurrentRowOrNumberPreceding,
     ExpectedUnboundedPrecedingCurrentRowOrNumberFollowing,
+    ExpectedLocalVariable,
     InvalidOrUnimplementedStatement,
 }
 

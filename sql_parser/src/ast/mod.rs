@@ -3,12 +3,15 @@ mod expressions;
 mod keyword;
 mod utils;
 
-use crate::token::Token;
+use crate::error::parse_error;
+use crate::error::ParseError;
+use crate::error::ParseErrorType;
 use core::fmt;
 pub use data_type::DataType;
 pub use data_type::NumericSize;
 pub use expressions::*;
 pub use keyword::{Keyword, KeywordKind};
+use sql_lexer::{Span, Token, TokenKind};
 pub use utils::*;
 
 #[derive(Debug, PartialEq, Clone)]
@@ -16,12 +19,6 @@ pub struct CommonTableExpression {
     pub name: Expression,
     pub columns: Vec<Expression>,
     pub query: SelectStatement,
-}
-
-#[derive(Debug, PartialEq, Clone)]
-pub enum ExecOrExecute {
-    Exec,
-    Execute,
 }
 
 #[derive(Debug, PartialEq, Clone)]
@@ -42,25 +39,37 @@ pub enum Statement {
         ctes: Vec<CommonTableExpression>,
         statement: CommonTableExpressionStatement,
     },
-    Declare(Vec<LocalVariable>),
-    SetLocalVariable {
-        name: Token,
-        value: Expression,
-    },
+    // Declare(Vec<LocalVariable>),
+    // SetLocalVariable {
+    //     name: Token,
+    //     value: Expression,
+    // },
     Execute {
         exec_kw: Keyword,
         procedure_name: Expression,
-        parameters: Vec<Expression>,
+        parameters: Vec<ProcedureParameter>,
     },
 }
 
 #[derive(Debug, PartialEq, Clone)]
-pub struct LocalVariable {
-    pub name: Token,
-    pub is_as: bool,
-    pub data_type: DataType,
-    pub value: Option<Expression>,
+pub struct ProcedureParameter {
+    pub name: Option<ProcedureParameterName>,
+    pub value: Expression,
 }
+
+#[derive(Debug, PartialEq, Clone)]
+pub struct ProcedureParameterName {
+    pub location: Span,
+    pub content: String,
+}
+
+// #[derive(Debug, PartialEq, Clone)]
+// pub struct LocalVariable {
+//     pub name: Token,
+//     pub is_as: bool,
+//     pub data_type: DataType,
+//     pub value: Option<Expression>,
+// }
 
 #[derive(Debug, PartialEq, Clone)]
 pub struct Query {
@@ -206,8 +215,6 @@ pub enum JoinType {
     RightOuter,
     Full,
     FullOuter,
-    CrossApply,
-    OuterApply,
 }
 
 #[derive(Debug, PartialEq, Clone)]
@@ -272,15 +279,6 @@ impl fmt::Display for CommonTableExpression {
     }
 }
 
-impl fmt::Display for ExecOrExecute {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match &self {
-            ExecOrExecute::Exec => write!(f, "EXEC"),
-            ExecOrExecute::Execute => write!(f, "EXECUTE"),
-        }
-    }
-}
-
 impl fmt::Display for CommonTableExpressionStatement {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match &self {
@@ -301,17 +299,17 @@ impl fmt::Display for Statement {
                 display_list_comma_separated(ctes, f)?;
                 write!(f, " {}", statement)
             }
-            Statement::Declare(local_variables) => {
-                write!(f, "DECLARE ")?;
-                display_list_comma_separated(local_variables, f)
-            }
-            Statement::SetLocalVariable { name, value } => write!(f, "SET {} = {}", name, value),
+            // Statement::Declare(local_variables) => {
+            //     write!(f, "DECLARE ")?;
+            //     display_list_comma_separated(local_variables, f)
+            // }
+            // Statement::SetLocalVariable { name, value } => write!(f, "SET {} = {}", name, value),
             Statement::Execute {
                 exec_kw,
                 procedure_name,
                 parameters,
             } => {
-                write!(f, "{} {}", exec_kw, procedure_name)?;
+                write!(f, "{} {} ", exec_kw, procedure_name)?;
                 display_list_comma_separated(parameters, f)
             }
             Statement::Insert(insert) => write!(f, "{}", insert),
@@ -321,13 +319,54 @@ impl fmt::Display for Statement {
     }
 }
 
-impl fmt::Display for LocalVariable {
+// impl fmt::Display for LocalVariable {
+//     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+//         write!(f, "{}", self.name)?;
+//         if self.is_as {
+//             write!(f, " AS {}", self.data_type)
+//         } else {
+//             write!(f, " {}", self.data_type)
+//         }
+//     }
+// }
+
+impl fmt::Display for ProcedureParameter {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{}", self.name)?;
-        if self.is_as {
-            write!(f, " AS {}", self.data_type)
+        if let Some(name) = &self.name {
+            write!(f, "{} = ", name)?;
+        }
+        write!(f, "{}", self.value)?;
+
+        Ok(())
+    }
+}
+
+impl fmt::Display for ProcedureParameterName {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "@{}", self.content)
+    }
+}
+
+impl<'a> TryFrom<Token<'a>> for ProcedureParameterName {
+    type Error = ParseError<'a>;
+
+    fn try_from(value: Token<'a>) -> Result<Self, Self::Error> {
+        let content = match value.kind() {
+            TokenKind::LocalVariable(i) => i.to_string(),
+            _ => return parse_error(ParseErrorType::ExpectedLocalVariable),
+        };
+        Ok(ProcedureParameterName {location: value.location(), content})
+    }
+}
+
+impl<'a> TryFrom<Option<Token<'a>>> for ProcedureParameterName {
+    type Error = ParseError<'a>;
+
+    fn try_from(value: Option<Token<'a>>) -> Result<Self, Self::Error> {
+        if let Some(token) = value {
+            ProcedureParameterName::try_from(token)
         } else {
-            write!(f, " {}", self.data_type)
+            unreachable!()
         }
     }
 }
@@ -592,8 +631,6 @@ impl fmt::Display for JoinType {
             JoinType::RightOuter => write!(f, "RIGHT JOIN OUTER"),
             JoinType::Full => write!(f, "FULL JOIN "),
             JoinType::FullOuter => write!(f, "FULL JOIN OUTER"),
-            JoinType::CrossApply => write!(f, "CROSS APPLY"),
-            JoinType::OuterApply => write!(f, "OUTER APPLY"),
         }
     }
 }
