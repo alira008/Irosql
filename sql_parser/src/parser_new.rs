@@ -18,6 +18,14 @@ const SELECT_ITEM_TYPE_START: &'static [TokenKind<'static>] = &[
 const GROUP_BY_START: &'static [TokenKind<'static>] =
     &[TokenKind::Identifier(""), TokenKind::QuotedIdentifier("")];
 
+const EXPRESSION_LIST_START: &'static [TokenKind<'static>] = &[
+    TokenKind::Identifier(""),
+    TokenKind::QuotedIdentifier(""),
+    TokenKind::NumberLiteral(""),
+    TokenKind::StringLiteral(""),
+    TokenKind::LocalVariable(""),
+];
+
 const BUILTIN_FN_START: &'static [TokenKind<'static>] = &[
     TokenKind::Abs,
     TokenKind::Acos,
@@ -233,6 +241,25 @@ impl<'a> Parser<'a> {
             }
         }
         self.unexpected_token(GROUP_BY_START.iter().map(|s| s.to_string()).collect())
+    }
+
+    fn expect_expression_list_start(&mut self) -> Result<(), ParseError<'a>> {
+        if let Some(token) = self.peek_token {
+            if token.kind_as_ref().builtin_fn() {
+                return Ok(());
+            }
+            for start_token in EXPRESSION_LIST_START {
+                if start_token.shallow_eq_token(token.kind_as_ref()) {
+                    return Ok(());
+                }
+            }
+        }
+        self.unexpected_token(
+            EXPRESSION_LIST_START
+                .iter()
+                .map(|s| s.to_string())
+                .collect(),
+        )
     }
 
     fn expect_order_by_args_start(&mut self) -> Result<(), ParseError<'a>> {
@@ -1138,6 +1165,43 @@ impl<'a> Parser<'a> {
         Ok(size)
     }
 
+    fn parse_expression_list(&mut self) -> Result<Vec<ast::Expression>, ParseError<'a>> {
+        let mut expressions = vec![];
+
+        loop {
+            self.expect_expression_list_start()?;
+            dbg!(self.peek_token);
+            let expression = self.parse_expression(Precedence::Lowest)?;
+            dbg!(self.peek_token);
+
+            expressions.push(expression);
+            if !self.token_is(&TokenKind::Comma) {
+                break;
+            }
+            self.advance();
+        }
+
+        Ok(expressions)
+    }
+
+    fn parse_in_expression_list(
+        &mut self,
+        test_expression: ast::Expression,
+        in_kw: Keyword,
+        not_kw: Option<Keyword>,
+    ) -> Result<ast::Expression, ParseError<'a>> {
+        let _ = self.expect_token(&TokenKind::LeftParen)?;
+        let list = self.parse_expression_list()?;
+        let _ = self.expect_token(&TokenKind::RightParen)?;
+
+        Ok(ast::Expression::InExpressionList {
+            test_expression: Box::new(test_expression),
+            in_kw,
+            not_kw,
+            list,
+        })
+    }
+
     fn parse_expression(
         &mut self,
         precedence: Precedence,
@@ -1205,6 +1269,11 @@ impl<'a> Parser<'a> {
             let expr = self.parse_cast_expression()?;
             dbg!(&expr);
             return Ok(expr);
+        } else if self.token_is(&TokenKind::LeftParen) {
+            // let _ = self.expect_token(&TokenKind::LeftParen)?;
+            // let expr_list = self.parse_expression_list()?;
+            // let _ = self.expect_token(&TokenKind::RightParen)?;
+            // return Ok(expr_list);
         }
 
         self.unexpected_token(vec!["expression".to_string()])
@@ -1278,8 +1347,17 @@ impl<'a> Parser<'a> {
                 left: Box::new(left),
                 right: Box::new(right),
             });
+        } else if self.token_is(&TokenKind::In) {
+            let in_kw = self.consume_keyword(TokenKind::In)?;
+            let expr = self.parse_in_expression_list(left, in_kw, None)?;
+            return Ok(expr);
+        } else if self.token_is(&TokenKind::Not) {
+            let not_kw = self.consume_keyword(TokenKind::Not)?;
+            if let Some(in_kw) = self.maybe_keyword(TokenKind::In) {
+                let expr = self.parse_in_expression_list(left, in_kw, Some(not_kw))?;
+                return Ok(expr);
+            }
         }
-
 
         self.unexpected_token(vec!["expression".to_string()])
     }

@@ -89,7 +89,12 @@ pub enum Expression {
         operator: UnaryOperator,
         right: Box<Expression>,
     },
-    ExpressionList(Vec<Expression>),
+    InExpressionList {
+        test_expression: Box<Expression>,
+        in_kw: Keyword,
+        not_kw: Option<Keyword>,
+        list: Vec<Expression>,
+    },
     Function {
         name: Box<FunctionName>,
         args: Option<Vec<Expression>>,
@@ -377,8 +382,18 @@ impl fmt::Display for Expression {
                 right,
             } => write!(f, "{} {} {}", left, and_kw, right),
             Expression::Or { or_kw, left, right } => write!(f, "{} {} {}", left, or_kw, right),
-            Expression::ExpressionList(list) => {
-                f.write_str("(")?;
+            Expression::InExpressionList {
+                test_expression,
+                in_kw,
+                not_kw,
+                list,
+            } => {
+                write!(f, "{}", test_expression)?;
+                if let Some(kw) = not_kw {
+                    write!(f, " {}", kw)?;
+                }
+                write!(f, " {}", in_kw)?;
+                f.write_str(" (")?;
                 display_list_comma_separated(list, f)?;
                 f.write_str(")")?;
 
