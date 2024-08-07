@@ -89,12 +89,6 @@ pub enum Expression {
         operator: UnaryOperator,
         right: Box<Expression>,
     },
-    InExpressionList {
-        test_expression: Box<Expression>,
-        in_kw: Keyword,
-        not_kw: Option<Keyword>,
-        list: Vec<Expression>,
-    },
     Function {
         name: Box<FunctionName>,
         args: Option<Vec<Expression>>,
@@ -105,6 +99,12 @@ pub enum Expression {
         expression: Box<Expression>,
         as_kw: Keyword,
         data_type: DataType,
+    },
+    InExpressionList {
+        test_expression: Box<Expression>,
+        in_kw: Keyword,
+        not_kw: Option<Keyword>,
+        list: Vec<Expression>,
     },
 }
 
@@ -365,6 +365,14 @@ impl<'a> TryFrom<Option<Token<'a>>> for Expression {
 impl fmt::Display for Expression {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
+            Expression::Asterisk => write!(f, "*"),
+            Expression::Identifier(v) => write!(f, "{}", v),
+            Expression::QuotedIdentifier(v) => write!(f, "[{}]", v),
+            Expression::StringLiteral(v) => write!(f, "'{}'", v),
+            Expression::NumberLiteral(v) => write!(f, "{}", v),
+            Expression::LocalVariable(v) => write!(f, "@{}", v),
+            Expression::Keyword(v) => write!(f, "{}", v),
+            Expression::Compound(v) => display_list_delimiter_separated(v, ".", f),
             Expression::Arithmetic {
                 operator,
                 left,
@@ -382,23 +390,6 @@ impl fmt::Display for Expression {
                 right,
             } => write!(f, "{} {} {}", left, and_kw, right),
             Expression::Or { or_kw, left, right } => write!(f, "{} {} {}", left, or_kw, right),
-            Expression::InExpressionList {
-                test_expression,
-                in_kw,
-                not_kw,
-                list,
-            } => {
-                write!(f, "{}", test_expression)?;
-                if let Some(kw) = not_kw {
-                    write!(f, " {}", kw)?;
-                }
-                write!(f, " {}", in_kw)?;
-                f.write_str(" (")?;
-                display_list_comma_separated(list, f)?;
-                f.write_str(")")?;
-
-                Ok(())
-            }
             Expression::Function { name, args, over } => {
                 write!(f, "{}", name)?;
                 f.write_str("(")?;
@@ -417,14 +408,23 @@ impl fmt::Display for Expression {
                 as_kw,
                 data_type,
             } => write!(f, "{}({} {} {})", cast_kw, expression, as_kw, data_type),
-            Expression::Identifier(v) => write!(f, "{}", v),
-            Expression::QuotedIdentifier(v) => write!(f, "[{}]", v),
-            Expression::StringLiteral(v) => write!(f, "'{}'", v),
-            Expression::NumberLiteral(v) => write!(f, "{}", v),
-            Expression::LocalVariable(v) => write!(f, "@{}", v),
-            Expression::Keyword(v) => write!(f, "{}", v),
-            Expression::Compound(v) => display_list_delimiter_separated(v, ".", f),
-            Expression::Asterisk => write!(f, "*"),
+            Expression::InExpressionList {
+                test_expression,
+                in_kw,
+                not_kw,
+                list,
+            } => {
+                write!(f, "{}", test_expression)?;
+                if let Some(kw) = not_kw {
+                    write!(f, " {}", kw)?;
+                }
+                write!(f, " {}", in_kw)?;
+                f.write_str(" (")?;
+                display_list_comma_separated(list, f)?;
+                f.write_str(")")?;
+
+                Ok(())
+            }
         }
     }
 }
