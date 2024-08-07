@@ -247,23 +247,62 @@ impl<'a> Parser<'a> {
                 TokenKind::Select => {
                     return Ok(ast::Statement::Select(self.parse_select_statement()?))
                 }
-                // TokenKind::INSERT => {
+                // TokenKind::Insert => {
                 //     return Ok(ast::Statement::Insert(self.parse_insert_statement()?))
                 // }
-                // TokenKind::UPDATE => {
+                // TokenKind::Update => {
                 //     return Ok(ast::Statement::Update(self.parse_update_statement()?))
                 // }
-                // TokenKind::DELETE => {
+                // TokenKind::Delete => {
                 //     return Ok(ast::Statement::Delete(self.parse_delete_statement()?))
                 // }
-                // TokenKind::WITH => return self.parse_cte_statement(),
-                // TokenKind::DECLARE => return self.parse_declare_statement(),
-                // TokenKind::SET => return self.parse_set_local_variable_statement(),
+                TokenKind::With => return self.parse_cte_statement(),
+                // TokenKind::Declare => return self.parse_declare_statement(),
+                // TokenKind::Set => return self.parse_set_local_variable_statement(),
                 TokenKind::Exec | TokenKind::Execute => return self.parse_execute_statement(),
                 _ => return parse_error(ParseErrorType::ExpectedKeyword),
             },
             None => todo!(),
         }
+    }
+
+    fn parse_cte_statement(&mut self) -> Result<ast::Statement, ParseError<'a>> {
+        let with_kw = self.consume_keyword(TokenKind::With)?;
+        let mut ctes = vec![];
+        dbg!(&with_kw);
+        loop {
+            let cte_name = ast::Expression::try_from(self.peek_token)?;
+            self.advance();
+            let column_list = if self.token_is(&TokenKind::LeftParen) {
+                self.advance();
+                let expr_list = self.parse_expression_list()?;
+                let _ = self.expect_token(&TokenKind::RightParen)?;
+                Some(expr_list)
+            } else {
+                None
+            };
+            let as_kw = self.consume_keyword(TokenKind::As)?;
+            let _ = self.expect_token(&TokenKind::LeftParen)?;
+            let query = self.parse_select_statement()?;
+            let _ = self.expect_token(&TokenKind::RightParen)?;
+
+            ctes.push(ast::CommonTableExpression {
+                name: cte_name,
+                columns: column_list,
+                as_kw,
+                query,
+            });
+
+            if self.token_is(&TokenKind::Select) {
+                break;
+            }
+        }
+        let final_query = self.parse_select_statement()?;
+        Ok(ast::Statement::CTE {
+            with_kw,
+            ctes,
+            statement: ast::CommonTableExpressionStatement::Select(final_query),
+        })
     }
 
     fn parse_execute_statement(&mut self) -> Result<ast::Statement, ParseError<'a>> {

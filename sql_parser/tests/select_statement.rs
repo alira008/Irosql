@@ -497,3 +497,19 @@ fn select_statement_with_case_statement() {
 
     assert_eq!(expected_query, query.to_string());
 }
+
+#[test]
+fn select_statement_with_cte() {
+    let input = r"with testcte as (select * from MarketLake) SELECT Symbol, LastPrice, 
+    PercentChange from Market m inner join testcte tc on tc.Symbol = m.Symbol where Symbol not like
+    @TestPattern and LastPrice > 32";
+    let mut expected_query = String::from("with testcte as (select * from MarketLake)");
+    expected_query += " select Symbol, LastPrice, PercentChange from Market m";
+    expected_query += " inner join testcte tc on tc.Symbol = m.Symbol";
+    expected_query += " where Symbol not like @TestPattern and LastPrice > 32";
+    let lexer = Lexer::new(input);
+    let mut parser = Parser::new(lexer);
+    let query = parser.parse();
+
+    assert_eq!(expected_query, query.to_string());
+}

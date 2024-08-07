@@ -17,7 +17,8 @@ pub use utils::*;
 #[derive(Debug, PartialEq, Clone)]
 pub struct CommonTableExpression {
     pub name: Expression,
-    pub columns: Vec<Expression>,
+    pub columns: Option<Vec<Expression>>,
+    pub as_kw: Keyword,
     pub query: SelectStatement,
 }
 
@@ -36,6 +37,7 @@ pub enum Statement {
     Update(UpdateStatement),
     Delete(DeleteStatement),
     CTE {
+        with_kw: Keyword,
         ctes: Vec<CommonTableExpression>,
         statement: CommonTableExpressionStatement,
     },
@@ -270,12 +272,12 @@ pub enum NextOrFirst {
 impl fmt::Display for CommonTableExpression {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "{}", self.name)?;
-        if !self.columns.is_empty() {
-            write!(f, "(")?;
-            display_list_comma_separated(&self.columns, f)?;
+        if let Some(columns) = &self.columns {
+            write!(f, " (")?;
+            display_list_comma_separated(&columns, f)?;
             write!(f, ")")?;
         }
-        write!(f, " AS ({})", self.query)
+        write!(f, " {} ({})", self.as_kw, self.query)
     }
 }
 
@@ -294,8 +296,12 @@ impl fmt::Display for Statement {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match &self {
             Statement::Select(select) => write!(f, "{}", select),
-            Statement::CTE { ctes, statement } => {
-                write!(f, "WITH ")?;
+            Statement::CTE {
+                with_kw,
+                ctes,
+                statement,
+            } => {
+                write!(f, "{} ", with_kw)?;
                 display_list_comma_separated(ctes, f)?;
                 write!(f, " {}", statement)
             }
@@ -355,7 +361,10 @@ impl<'a> TryFrom<Token<'a>> for ProcedureParameterName {
             TokenKind::LocalVariable(i) => i.to_string(),
             _ => return parse_error(ParseErrorType::ExpectedLocalVariable),
         };
-        Ok(ProcedureParameterName {location: value.location(), content})
+        Ok(ProcedureParameterName {
+            location: value.location(),
+            content,
+        })
     }
 }
 
@@ -637,13 +646,15 @@ impl fmt::Display for JoinType {
 
 impl fmt::Display for Join {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{} {}", self.join_type, self.table)?;
+        display_list_delimiter_separated(&self.join, " ", f)?;
+        write!(f, " {}", self.table)?;
         if let Some(condition) = &self.condition {
-            write!(f, " ON {}", condition)?;
+            write!(f, " {} {}", self.on, condition)?;
         }
         Ok(())
     }
 }
+
 impl fmt::Display for TableArg {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "{} {}", self.from, self.table)?;
