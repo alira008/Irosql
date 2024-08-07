@@ -385,8 +385,6 @@ impl<'a> Parser<'a> {
 
     fn parse_select_statement(&mut self) -> Result<ast::SelectStatement, ParseError<'a>> {
         let mut select_statement = ast::SelectStatement::default();
-        dbg!(self.current_token);
-        dbg!(self.peek_token);
 
         select_statement.select = self.consume_keyword(TokenKind::Select)?;
         select_statement.distinct = self.maybe_keyword(TokenKind::Distinct);
@@ -434,6 +432,7 @@ impl<'a> Parser<'a> {
             self.expect_select_item_start()?;
             dbg!(self.peek_token);
             let expression = self.parse_expression(Precedence::Lowest)?;
+            dbg!(&expression);
 
             let as_kw = self.maybe_keyword(TokenKind::As);
 
@@ -581,14 +580,34 @@ impl<'a> Parser<'a> {
             | ast::Expression::QuotedIdentifier(_)
             | ast::Expression::LocalVariable(_)
             | ast::Expression::Compound(_) => {
-                return Ok(ast::TableSource::Table {
-                    name: expr,
-                    is_as: false,
-                    alias: None,
-                })
+
+                // return Ok(ast::TableSource::Table {
+                //     name: expr,
+                //     is_as: false,
+                //     alias: None,
+                // })
             }
             _ => return self.unexpected_token(vec!["select items".to_string()]),
         }
+
+        // check for alias
+        if self.token_is_any(&[
+            TokenKind::Identifier(""),
+            TokenKind::QuotedIdentifier(""),
+            TokenKind::StringLiteral(""),
+        ]) {
+            let alias = ast::Expression::try_from(self.peek_token)?;
+            self.advance();
+            return Ok(ast::TableSource::Table {
+                name: expr,
+                alias: Some(alias),
+            });
+        }
+
+        Ok(ast::TableSource::Table {
+            name: expr,
+            alias: None,
+        })
     }
 
     fn parse_table_joins(&mut self) -> Result<Vec<ast::Join>, ParseError<'a>> {
@@ -1220,7 +1239,14 @@ impl<'a> Parser<'a> {
     }
 
     fn parse_prefix_expression(&mut self) -> Result<ast::Expression, ParseError<'a>> {
-        if self.token_is_any(&SELECT_ITEM_TYPE_START) {
+        if self.token_is_any(&[
+            TokenKind::Identifier(""),
+            TokenKind::QuotedIdentifier(""),
+            TokenKind::NumberLiteral(""),
+            TokenKind::StringLiteral(""),
+            TokenKind::LocalVariable(""),
+            TokenKind::Asterisk,
+        ]) {
             let mut expr = ast::Expression::try_from(self.peek_token)?;
 
             let mut could_be_compound = false;
@@ -1270,10 +1296,11 @@ impl<'a> Parser<'a> {
             dbg!(&expr);
             return Ok(expr);
         } else if self.token_is(&TokenKind::LeftParen) {
-            // let _ = self.expect_token(&TokenKind::LeftParen)?;
-            // let expr_list = self.parse_expression_list()?;
-            // let _ = self.expect_token(&TokenKind::RightParen)?;
-            // return Ok(expr_list);
+            let _ = self.expect_token(&TokenKind::LeftParen)?;
+            let select_statement = self.parse_select_statement()?;
+            dbg!(self.peek_token);
+            let _ = self.expect_token(&TokenKind::RightParen)?;
+            return Ok(ast::Expression::Subquery(Box::new(select_statement)));
         }
 
         self.unexpected_token(vec!["expression".to_string()])

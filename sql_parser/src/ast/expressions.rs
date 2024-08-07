@@ -1,4 +1,4 @@
-use super::{display_list_comma_separated, display_list_delimiter_separated, DataType, Keyword};
+use super::{display_list_comma_separated, display_list_delimiter_separated, DataType, Keyword, SelectStatement};
 use crate::error::{parse_error, ParseError, ParseErrorType};
 use core::fmt;
 use sql_lexer::{Span, Token, TokenKind};
@@ -106,6 +106,7 @@ pub enum Expression {
         not_kw: Option<Keyword>,
         list: Vec<Expression>,
     },
+    Subquery(Box<SelectStatement>),
 }
 
 #[derive(Debug, PartialEq, Clone, Copy)]
@@ -424,6 +425,9 @@ impl fmt::Display for Expression {
                 f.write_str(")")?;
 
                 Ok(())
+            }
+            Expression::Subquery(s) => {
+                write!(f, "({})", s)
             }
         }
     }

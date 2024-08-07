@@ -52,7 +52,6 @@ fn basic_select_statement_new() {
                 content: "testtable".to_string(),
                 location: Span::new(73, 81),
             }),
-            is_as: false,
             alias: None,
         },
         joins: vec![],
@@ -333,6 +332,20 @@ fn select_statement_with_where_and_order_by_three() {
     let mut expected_query = String::from("select Symbol, LastPrice, PC 'PercentChange'");
     expected_query += " from MarketData where Symbol = 'amzn' and PercentChange > 2";
     expected_query += " order by QuoteTime, Symbol desc offset 4 row fetch next 54 rows only";
+    let lexer = Lexer::new(input);
+    let mut parser = Parser::new(lexer);
+    let query = parser.parse();
+
+    assert_eq!(expected_query, query.to_string());
+}
+
+#[test]
+fn select_statement_with_subquery() {
+    let input = r"SELECT Symbol, LastPrice, PercentChange, (select Top 1 Exchange from
+    MarketIndices mi where mi.Symbol = m.Symbol) 'TopExchange', OpenPrice from Market m";
+    let mut expected_query = String::from("select Symbol, LastPrice, PercentChange, (select ");
+    expected_query += "top 1 Exchange from MarketIndices mi where mi.Symbol = m.Symbol) ";
+    expected_query += "'TopExchange', OpenPrice from Market m";
     let lexer = Lexer::new(input);
     let mut parser = Parser::new(lexer);
     let query = parser.parse();

@@ -206,8 +206,7 @@ pub struct IntoArg {
 pub enum TableSource {
     Table {
         name: Expression,
-        is_as: bool,
-        alias: Option<String>,
+        alias: Option<Expression>,
     },
     Derived {
         query: Expression,
@@ -596,13 +595,9 @@ impl fmt::Display for IntoArg {
 impl fmt::Display for TableSource {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match &self {
-            TableSource::Table { name, is_as, alias } => match alias {
+            TableSource::Table { name, alias } => match alias {
                 Some(alias) => {
-                    if *is_as {
-                        write!(f, "{} AS {}", name, alias)
-                    } else {
-                        write!(f, "{} {}", name, alias)
-                    }
+                    write!(f, "{} {}", name, alias)
                 }
                 None => write!(f, "{}", name),
             },
@@ -677,7 +672,11 @@ impl fmt::Display for TableArg {
 
 impl fmt::Display for OffsetArg {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, " {} {} {}", self.offset_kw, self.value, self.row_or_rows_kw)
+        write!(
+            f,
+            " {} {} {}",
+            self.offset_kw, self.value, self.row_or_rows_kw
+        )
     }
 }
 
@@ -692,7 +691,11 @@ impl fmt::Display for RowOrRows {
 
 impl fmt::Display for FetchArg {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, " {} {} {} {} {}", self.fetch_kw, self.first_or_next_kw, self.value, self.row_or_rows_kw, self.only_kw)
+        write!(
+            f,
+            " {} {} {} {} {}",
+            self.fetch_kw, self.first_or_next_kw, self.value, self.row_or_rows_kw, self.only_kw
+        )
     }
 }
 
