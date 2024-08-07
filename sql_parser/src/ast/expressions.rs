@@ -132,6 +132,24 @@ pub enum Expression {
         exists_kw: Keyword,
         subquery: Box<Expression>,
     },
+    All {
+        all_kw: Keyword,
+        scalar_expression: Box<Expression>,
+        comparison_op: ComparisonOperator,
+        subquery: Box<Expression>,
+    },
+    Some {
+        some_kw: Keyword,
+        scalar_expression: Box<Expression>,
+        comparison_op: ComparisonOperator,
+        subquery: Box<Expression>,
+    },
+    Any {
+        any_kw: Keyword,
+        scalar_expression: Box<Expression>,
+        comparison_op: ComparisonOperator,
+        subquery: Box<Expression>,
+    },
 }
 
 #[derive(Debug, PartialEq, Clone, Copy)]
@@ -497,6 +515,36 @@ impl fmt::Display for Expression {
 
                 Ok(())
             }
+            Expression::All {
+                all_kw,
+                scalar_expression,
+                comparison_op,
+                subquery,
+            } => write!(
+                f,
+                "{} {} {} {}",
+                scalar_expression, comparison_op, all_kw, subquery
+            ),
+            Expression::Some {
+                some_kw,
+                scalar_expression,
+                comparison_op,
+                subquery,
+            } => write!(
+                f,
+                "{} {} {} {}",
+                scalar_expression, comparison_op, some_kw, subquery
+            ),
+            Expression::Any {
+                any_kw,
+                scalar_expression,
+                comparison_op,
+                subquery,
+            } => write!(
+                f,
+                "{} {} {} {}",
+                scalar_expression, comparison_op, any_kw, subquery
+            ),
         }
     }
 }

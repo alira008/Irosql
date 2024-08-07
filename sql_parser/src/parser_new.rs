@@ -1398,15 +1398,41 @@ impl<'a> Parser<'a> {
 
             self.advance();
             dbg!(self.peek_token);
-            let right = self.parse_expression(precedence)?;
+            if let Some(kw) = self.maybe_keyword(TokenKind::All) {
+                let subquery = self.parse_subquery()?;
+                return Ok(ast::Expression::All {
+                    all_kw: kw,
+                    scalar_expression: Box::new(left),
+                    comparison_op: op,
+                    subquery: Box::new(subquery),
+                });
+            } else if let Some(kw) = self.maybe_keyword(TokenKind::Some) {
+                let subquery = self.parse_subquery()?;
+                return Ok(ast::Expression::Some {
+                    some_kw: kw,
+                    scalar_expression: Box::new(left),
+                    comparison_op: op,
+                    subquery: Box::new(subquery),
+                });
+            } else if let Some(kw) = self.maybe_keyword(TokenKind::Any) {
+                let subquery = self.parse_subquery()?;
+                return Ok(ast::Expression::Any {
+                    any_kw: kw,
+                    scalar_expression: Box::new(left),
+                    comparison_op: op,
+                    subquery: Box::new(subquery),
+                });
+            } else {
+                let right = self.parse_expression(precedence)?;
 
-            dbg!(&left);
-            dbg!(&right);
-            return Ok(ast::Expression::Comparison {
-                operator: op,
-                left: Box::new(left),
-                right: Box::new(right),
-            });
+                dbg!(&left);
+                dbg!(&right);
+                return Ok(ast::Expression::Comparison {
+                    operator: op,
+                    left: Box::new(left),
+                    right: Box::new(right),
+                });
+            }
         } else if self.token_is_any(&[
             TokenKind::Plus,
             TokenKind::Minus,

@@ -414,3 +414,42 @@ fn select_statement_with_where_and_exists_expression() {
 
     assert_eq!(expected_query, query.to_string());
 }
+
+#[test]
+fn select_statement_with_where_and_all_expression() {
+    let input = r"SELECT Symbol, LastPrice, PercentChange from Market m
+    where ManufactureDays >= all (select ManufactureDays from MarketData)";
+    let mut expected_query = String::from("select Symbol, LastPrice, PercentChange ");
+    expected_query += "from Market m where ManufactureDays >= all (select ManufactureDays from MarketData)";
+    let lexer = Lexer::new(input);
+    let mut parser = Parser::new(lexer);
+    let query = parser.parse();
+
+    assert_eq!(expected_query, query.to_string());
+}
+
+#[test]
+fn select_statement_with_where_and_some_expression() {
+    let input = r"SELECT Symbol, LastPrice, PercentChange from Market m
+    where ManufactureDays >= some (select ManufactureDays from MarketData)";
+    let mut expected_query = String::from("select Symbol, LastPrice, PercentChange ");
+    expected_query += "from Market m where ManufactureDays >= some (select ManufactureDays from MarketData)";
+    let lexer = Lexer::new(input);
+    let mut parser = Parser::new(lexer);
+    let query = parser.parse();
+
+    assert_eq!(expected_query, query.to_string());
+}
+
+#[test]
+fn select_statement_with_where_and_any_expression() {
+    let input = r"SELECT Symbol, LastPrice, PercentChange from Market m
+    where ManufactureDays >= any (select ManufactureDays from MarketData)";
+    let mut expected_query = String::from("select Symbol, LastPrice, PercentChange ");
+    expected_query += "from Market m where ManufactureDays >= any (select ManufactureDays from MarketData)";
+    let lexer = Lexer::new(input);
+    let mut parser = Parser::new(lexer);
+    let query = parser.parse();
+
+    assert_eq!(expected_query, query.to_string());
+}
