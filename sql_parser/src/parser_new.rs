@@ -1203,22 +1203,45 @@ impl<'a> Parser<'a> {
         Ok(expressions)
     }
 
-    fn parse_in_expression_list(
+    fn parse_subquery(&mut self) -> Result<ast::Expression, ParseError<'a>> {
+        let _ = self.expect_token(&TokenKind::LeftParen)?;
+        let select_statement = self.parse_select_statement()?;
+        let _ = self.expect_token(&TokenKind::RightParen)?;
+
+        Ok(ast::Expression::Subquery(Box::new(select_statement)))
+    }
+
+    fn parse_in_expression(
         &mut self,
         test_expression: ast::Expression,
         in_kw: Keyword,
         not_kw: Option<Keyword>,
     ) -> Result<ast::Expression, ParseError<'a>> {
         let _ = self.expect_token(&TokenKind::LeftParen)?;
-        let list = self.parse_expression_list()?;
+        let expr = if self.token_is(&TokenKind::Select) {
+            dbg!(self.peek_token);
+            let subquery = ast::Expression::Subquery(Box::new(self.parse_select_statement()?));
+            ast::Expression::InSubquery {
+                test_expression: Box::new(test_expression),
+                in_kw,
+                not_kw,
+                subquery: Box::new(subquery),
+            }
+        } else if self.token_is_any(&EXPRESSION_LIST_START) {
+            let list = self.parse_expression_list()?;
+            ast::Expression::InExpressionList {
+                test_expression: Box::new(test_expression),
+                in_kw,
+                not_kw,
+                list,
+            }
+        } else {
+            return parse_error(ParseErrorType::ExpectedSubqueryOrExpressionList);
+        };
+
         let _ = self.expect_token(&TokenKind::RightParen)?;
 
-        Ok(ast::Expression::InExpressionList {
-            test_expression: Box::new(test_expression),
-            in_kw,
-            not_kw,
-            list,
-        })
+        Ok(expr)
     }
 
     fn parse_expression(
@@ -1296,11 +1319,8 @@ impl<'a> Parser<'a> {
             dbg!(&expr);
             return Ok(expr);
         } else if self.token_is(&TokenKind::LeftParen) {
-            let _ = self.expect_token(&TokenKind::LeftParen)?;
-            let select_statement = self.parse_select_statement()?;
-            dbg!(self.peek_token);
-            let _ = self.expect_token(&TokenKind::RightParen)?;
-            return Ok(ast::Expression::Subquery(Box::new(select_statement)));
+            let subquery = self.parse_subquery()?;
+            return Ok(subquery);
         }
 
         self.unexpected_token(vec!["expression".to_string()])
@@ -1376,13 +1396,11 @@ impl<'a> Parser<'a> {
             });
         } else if self.token_is(&TokenKind::In) {
             let in_kw = self.consume_keyword(TokenKind::In)?;
-            let expr = self.parse_in_expression_list(left, in_kw, None)?;
-            return Ok(expr);
+            return Ok(self.parse_in_expression(left, in_kw, None)?);
         } else if self.token_is(&TokenKind::Not) {
             let not_kw = self.consume_keyword(TokenKind::Not)?;
             if let Some(in_kw) = self.maybe_keyword(TokenKind::In) {
-                let expr = self.parse_in_expression_list(left, in_kw, Some(not_kw))?;
-                return Ok(expr);
+                return Ok(self.parse_in_expression(left, in_kw, Some(not_kw))?);
             }
         }
 

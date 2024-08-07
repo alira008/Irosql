@@ -218,7 +218,8 @@ fn select_statement_with_where_clause_five() {
     let input = r"SELECT Symbol, LastPrice, PC 'PercentChange' from MarketData where 
     symbol nOT In ('amzn', 'googl', 'zm')  and LastPrice > 20.0 or [PercentChange] + 10 > 5";
     let mut expected_query = String::from("select Symbol, LastPrice, PC 'PercentChange'");
-    expected_query += " from MarketData where symbol not in ('amzn', 'googl', 'zm') and LastPrice > 20.0 or";
+    expected_query +=
+        " from MarketData where symbol not in ('amzn', 'googl', 'zm') and LastPrice > 20.0 or";
     expected_query += " [PercentChange] + 10 > 5";
     let lexer = Lexer::new(input);
     let mut parser = Parser::new(lexer);
@@ -232,7 +233,8 @@ fn select_statement_with_where_clause_six() {
     let input = r"SELECT Symbol, LastPrice, PC 'PercentChange' from MarketData where 
     symbol  In ('amzn', 'googl', 'zm')  and LastPrice > 20.0 or [PercentChange] + 10 > 5";
     let mut expected_query = String::from("select Symbol, LastPrice, PC 'PercentChange'");
-    expected_query += " from MarketData where symbol in ('amzn', 'googl', 'zm') and LastPrice > 20.0 or";
+    expected_query +=
+        " from MarketData where symbol in ('amzn', 'googl', 'zm') and LastPrice > 20.0 or";
     expected_query += " [PercentChange] + 10 > 5";
     let lexer = Lexer::new(input);
     let mut parser = Parser::new(lexer);
@@ -346,6 +348,22 @@ fn select_statement_with_subquery() {
     let mut expected_query = String::from("select Symbol, LastPrice, PercentChange, (select ");
     expected_query += "top 1 Exchange from MarketIndices mi where mi.Symbol = m.Symbol) ";
     expected_query += "'TopExchange', OpenPrice from Market m";
+    let lexer = Lexer::new(input);
+    let mut parser = Parser::new(lexer);
+    let query = parser.parse();
+
+    assert_eq!(expected_query, query.to_string());
+}
+
+#[test]
+fn select_statement_with_where_and_in_subquery() {
+    let input = r"SELECT Symbol, LastPrice, PercentChange, (select Top 1 Exchange from
+    MarketIndices mi where mi.Symbol = m.Symbol) 'TopExchange', OpenPrice from Market m
+    where Symbol in (select Symbol from MarketData where QuoteDate = cast('1-3-24' as date))";
+    let mut expected_query = String::from("select Symbol, LastPrice, PercentChange, (select ");
+    expected_query += "top 1 Exchange from MarketIndices mi where mi.Symbol = m.Symbol) ";
+    expected_query += "'TopExchange', OpenPrice from Market m where Symbol in (select Symbol ";
+    expected_query += "from MarketData where QuoteDate = cast('1-3-24' as date))";
     let lexer = Lexer::new(input);
     let mut parser = Parser::new(lexer);
     let query = parser.parse();

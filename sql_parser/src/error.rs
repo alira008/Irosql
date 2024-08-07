@@ -17,6 +17,7 @@ pub enum ParseErrorType<'a> {
     EmptyOrderByArgs,
     ExpectedDataType,
     ExpectedFloatPrecision,
+    ExpectedSubqueryOrExpressionList,
     MissingRowsOrRangeInWindowFrameClause,
     MissingAliasAfterAsKeyword,
     ExpectedUnboundedPrecedingCurrentRowOrNumberPreceding,

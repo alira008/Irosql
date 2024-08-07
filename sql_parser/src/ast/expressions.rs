@@ -106,6 +106,12 @@ pub enum Expression {
         not_kw: Option<Keyword>,
         list: Vec<Expression>,
     },
+    InSubquery {
+        test_expression: Box<Expression>,
+        in_kw: Keyword,
+        not_kw: Option<Keyword>,
+        subquery: Box<Expression>,
+    },
     Subquery(Box<SelectStatement>),
 }
 
@@ -428,6 +434,20 @@ impl fmt::Display for Expression {
             }
             Expression::Subquery(s) => {
                 write!(f, "({})", s)
+            }
+            Expression::InSubquery {
+                test_expression,
+                in_kw,
+                not_kw,
+                subquery,
+            } => {
+                write!(f, "{}", test_expression)?;
+                if let Some(kw) = not_kw {
+                    write!(f, " {}", kw)?;
+                }
+                write!(f, " {} {}", in_kw, subquery)?;
+
+                Ok(())
             }
         }
     }
