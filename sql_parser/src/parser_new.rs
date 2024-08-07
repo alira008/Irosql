@@ -1401,6 +1401,8 @@ impl<'a> Parser<'a> {
             let not_kw = self.consume_keyword(TokenKind::Not)?;
             if let Some(in_kw) = self.maybe_keyword(TokenKind::In) {
                 return Ok(self.parse_in_expression(left, in_kw, Some(not_kw))?);
+            } else {
+                return parse_error(ParseErrorType::ExpectedSubqueryOrExpressionList);
             }
         }
 
