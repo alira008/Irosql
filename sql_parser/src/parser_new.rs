@@ -377,7 +377,7 @@ impl<'a> Parser<'a> {
                 // Keyword::WITH => return self.parse_cte_statement(),
                 // Keyword::DECLARE => return self.parse_declare_statement(),
                 // Keyword::SET => return self.parse_set_local_variable_statement(),
-                TokenKind::Exec | TokenKind::Execute => return self.parse_execute_statement(),
+                // TokenKind::Exec | TokenKind::Execute => return self.parse_execute_statement(),
                 _ => return parse_error(ParseErrorType::ExpectedKeyword),
             },
             None => todo!(),
