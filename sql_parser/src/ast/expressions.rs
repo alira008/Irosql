@@ -128,6 +128,10 @@ pub enum Expression {
         not_kw: Keyword,
         expression: Box<Expression>,
     },
+    Exists {
+        exists_kw: Keyword,
+        subquery: Box<Expression>,
+    },
 }
 
 #[derive(Debug, PartialEq, Clone, Copy)]
@@ -482,6 +486,14 @@ impl fmt::Display for Expression {
             }
             Expression::Not { not_kw, expression } => {
                 write!(f, "{} {}", not_kw, expression)?;
+
+                Ok(())
+            }
+            Expression::Exists {
+                exists_kw,
+                subquery,
+            } => {
+                write!(f, "{} {}", exists_kw, subquery)?;
 
                 Ok(())
             }

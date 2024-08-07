@@ -401,3 +401,16 @@ fn select_statement_with_where_and_not_expression() {
 
     assert_eq!(expected_query, query.to_string());
 }
+
+#[test]
+fn select_statement_with_where_and_exists_expression() {
+    let input = r"SELECT Symbol, LastPrice, PercentChange from Market m
+    where nOT exists (select Symbol from MarketData)";
+    let mut expected_query = String::from("select Symbol, LastPrice, PercentChange ");
+    expected_query += "from Market m where not exists (select Symbol from MarketData)";
+    let lexer = Lexer::new(input);
+    let mut parser = Parser::new(lexer);
+    let query = parser.parse();
+
+    assert_eq!(expected_query, query.to_string());
+}

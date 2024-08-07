@@ -1348,6 +1348,13 @@ impl<'a> Parser<'a> {
                 not_kw,
                 expression: Box::new(expression),
             });
+        } else if self.token_is(&TokenKind::Exists) {
+            let exists_kw = self.consume_keyword(TokenKind::Exists)?;
+            let subquery = self.parse_subquery()?;
+            return Ok(ast::Expression::Exists {
+                exists_kw,
+                subquery: Box::new(subquery),
+            });
         }
 
         self.unexpected_token(vec!["expression".to_string()])
