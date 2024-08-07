@@ -1341,6 +1341,13 @@ impl<'a> Parser<'a> {
         } else if self.token_is(&TokenKind::LeftParen) {
             let subquery = self.parse_subquery()?;
             return Ok(subquery);
+        } else if self.token_is(&TokenKind::Not) {
+            let not_kw = self.consume_keyword(TokenKind::Not)?;
+            let expression = self.parse_expression(Precedence::Lowest)?;
+            return Ok(ast::Expression::Not {
+                not_kw,
+                expression: Box::new(expression),
+            });
         }
 
         self.unexpected_token(vec!["expression".to_string()])

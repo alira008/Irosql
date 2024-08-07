@@ -124,6 +124,10 @@ pub enum Expression {
         and_kw: Keyword,
         end: Box<Expression>,
     },
+    Not {
+        not_kw: Keyword,
+        expression: Box<Expression>,
+    },
 }
 
 #[derive(Debug, PartialEq, Clone, Copy)]
@@ -473,6 +477,11 @@ impl fmt::Display for Expression {
                     write!(f, " {}", kw)?;
                 }
                 write!(f, " {} {} {} {}", between_kw, begin, and_kw, end)?;
+
+                Ok(())
+            }
+            Expression::Not { not_kw, expression } => {
+                write!(f, "{} {}", not_kw, expression)?;
 
                 Ok(())
             }
