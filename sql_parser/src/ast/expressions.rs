@@ -150,6 +150,12 @@ pub enum Expression {
         comparison_op: ComparisonOperator,
         subquery: Box<Expression>,
     },
+    Like {
+        match_expression: Box<Expression>,
+        not_kw: Option<Keyword>,
+        like_kw: Keyword,
+        pattern: Box<Expression>,
+    },
 }
 
 #[derive(Debug, PartialEq, Clone, Copy)]
@@ -545,6 +551,20 @@ impl fmt::Display for Expression {
                 "{} {} {} {}",
                 scalar_expression, comparison_op, any_kw, subquery
             ),
+            Expression::Like {
+                match_expression,
+                not_kw,
+                like_kw,
+                pattern,
+            } => {
+                write!(f, "{}", match_expression)?;
+                if let Some(not_kw) = not_kw {
+                    write!(f, " {}", not_kw)?;
+                }
+                write!(f, " {} {}", like_kw, pattern)?;
+
+                Ok(())
+            }
         }
     }
 }
