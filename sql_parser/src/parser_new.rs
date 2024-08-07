@@ -159,7 +159,7 @@ impl<'a> Parser<'a> {
         false
     }
 
-    fn expect_token(&mut self, token_kind: &TokenKind) -> Result<Token, ParseError<'a>> {
+    fn expect_token(&mut self, token_kind: &TokenKind) -> Result<Token<'a>, ParseError<'a>> {
         if self.token_is(token_kind) {
             let tok = self.peek_token.unwrap();
             self.advance();
