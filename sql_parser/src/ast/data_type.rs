@@ -1,20 +1,22 @@
 use std::fmt;
 
+use super::Keyword;
+
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum DataType {
-    Int,
-    BigInt,
-    TinyInt,
-    SmallInt,
-    Bit,
-    Float(Option<u32>),
-    Real,
-    Date,
-    Datetime,
-    Time,
-    Decimal(Option<NumericSize>),
-    Numeric(Option<NumericSize>),
-    Varchar(Option<u32>),
+    Int(Keyword),
+    BigInt(Keyword),
+    TinyInt(Keyword),
+    SmallInt(Keyword),
+    Bit(Keyword),
+    Float(Keyword, Option<u32>),
+    Real(Keyword),
+    Date(Keyword),
+    Datetime(Keyword),
+    Time(Keyword),
+    Decimal(Keyword, Option<NumericSize>),
+    Numeric(Keyword, Option<NumericSize>),
+    Varchar(Keyword, Option<u32>),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -36,38 +38,38 @@ impl fmt::Display for NumericSize {
 impl fmt::Display for DataType {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            DataType::Int => write!(f, "INT"),
-            DataType::BigInt => write!(f, "BIGINT"),
-            DataType::TinyInt => write!(f, "TINYINT"),
-            DataType::SmallInt => write!(f, "SMALLINT"),
-            DataType::Bit => write!(f, "BIT"),
-            DataType::Float(s) => {
-                write!(f, "FLOAT")?;
+            DataType::Int(k) => write!(f, "{}", k),
+            DataType::BigInt(k) => write!(f, "{}", k),
+            DataType::TinyInt(k) => write!(f, "{}", k),
+            DataType::SmallInt(k) => write!(f, "{}", k),
+            DataType::Bit(k) => write!(f, "{}", k),
+            DataType::Float(k, s) => {
+                write!(f, "{}", k)?;
                 if let Some(p) = s {
                     write!(f, "({})", p)?;
                 }
                 Ok(())
             }
-            DataType::Real => write!(f, "REAL"),
-            DataType::Date => write!(f, "DATE"),
-            DataType::Datetime => write!(f, "DATETIME"),
-            DataType::Time => write!(f, "TIME"),
-            DataType::Decimal(s) => {
-                write!(f, "DECIMAL")?;
+            DataType::Real(k) => write!(f, "{}", k),
+            DataType::Date(k) => write!(f, "{}", k),
+            DataType::Datetime(k) => write!(f, "{}", k),
+            DataType::Time(k) => write!(f, "{}", k),
+            DataType::Decimal(k, s) => {
+                write!(f, "{}", k)?;
                 if let Some(s) = s {
                     write!(f, "({})", s)?;
                 }
                 Ok(())
             }
-            DataType::Numeric(s) => {
-                write!(f, "NUMERIC")?;
+            DataType::Numeric(k, s) => {
+                write!(f, "{}", k)?;
                 if let Some(s) = s {
                     write!(f, "({})", s)?;
                 }
                 Ok(())
             }
-            DataType::Varchar(s) => {
-                write!(f, "VARCHAR")?;
+            DataType::Varchar(k, s) => {
+                write!(f, "{}", k)?;
                 if let Some(s) = s {
                     write!(f, "({})", s)?;
                 }

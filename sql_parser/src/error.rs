@@ -14,6 +14,8 @@ pub enum ParseErrorType<'a> {
     EmptySelectColumns,
     EmptyPartitionByClause,
     EmptyOrderByArgs,
+    ExpectedDataType,
+    ExpectedFloatPrecision,
     MissingRowsOrRangeInWindowFrameClause,
     MissingAliasAfterAsKeyword,
     ExpectedUnboundedPrecedingCurrentRowOrNumberPreceding,

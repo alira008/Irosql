@@ -21,7 +21,7 @@ const BUILTIN_FN_START: &'static [TokenKind<'static>] = &[
     TokenKind::Asin,
     TokenKind::Atan,
     TokenKind::Avg,
-    TokenKind::Cast,
+    // TokenKind::Cast,
     TokenKind::Ceil,
     TokenKind::Ceiling,
     TokenKind::Cos,
@@ -385,10 +385,7 @@ impl<'a> Parser<'a> {
                 TokenKind::QuotedIdentifier(""),
                 TokenKind::StringLiteral(""),
             ]) {
-                let alias = match self.peek_token {
-                    Some(token) => ast::Expression::try_from(token)?,
-                    _ => unreachable!(),
-                };
+                let alias = ast::Expression::try_from(self.peek_token)?;
                 self.advance();
 
                 if matches!(expression, ast::Expression::Asterisk) {
@@ -432,10 +429,7 @@ impl<'a> Parser<'a> {
 
     fn parse_top_clause(&mut self, top_kw: Keyword) -> Result<ast::Top, ParseError<'a>> {
         dbg!(self.peek_token);
-        let top_expr = match self.peek_token {
-            Some(token) => ast::Expression::try_from(token)?,
-            _ => unreachable!(),
-        };
+        let top_expr = ast::Expression::try_from(self.peek_token)?;
         match top_expr {
             ast::Expression::NumberLiteral(_) => {}
             _ => return self.unexpected_token(vec!["numeric literal".to_string()]),
@@ -827,6 +821,156 @@ impl<'a> Parser<'a> {
         });
     }
 
+    fn parse_cast_expression(&mut self) -> Result<ast::Expression, ParseError<'a>> {
+        let cast_kw = self.consume_keyword(TokenKind::Cast)?;
+        let _ = self.expect_token(&TokenKind::LeftParen)?;
+
+        dbg!(&cast_kw);
+        let expression = self.parse_expression(Precedence::Lowest)?;
+        dbg!(&expression);
+
+        let as_kw = self.consume_keyword(TokenKind::As)?;
+        dbg!(&as_kw);
+        let data_type = self.parse_data_type()?;
+        dbg!(&data_type);
+        dbg!(self.peek_token);
+        let _ = self.expect_token(&TokenKind::RightParen)?;
+
+        Ok(ast::Expression::Cast {
+            cast_kw,
+            expression: Box::new(expression),
+            as_kw,
+            data_type,
+        })
+    }
+
+    fn parse_data_type(&mut self) -> Result<ast::DataType, ParseError<'a>> {
+        let data_type = if self.token_is(&TokenKind::Int) {
+            let keyword = Keyword::try_from(self.peek_token)?;
+            self.advance();
+            ast::DataType::Int(keyword)
+        } else if self.token_is(&TokenKind::Bigint) {
+            let keyword = Keyword::try_from(self.peek_token)?;
+            self.advance();
+            ast::DataType::BigInt(keyword)
+        } else if self.token_is(&TokenKind::Tinyint) {
+            let keyword = Keyword::try_from(self.peek_token)?;
+            self.advance();
+            ast::DataType::TinyInt(keyword)
+        } else if self.token_is(&TokenKind::Smallint) {
+            let keyword = Keyword::try_from(self.peek_token)?;
+            self.advance();
+            ast::DataType::SmallInt(keyword)
+        } else if self.token_is(&TokenKind::Bit) {
+            let keyword = Keyword::try_from(self.peek_token)?;
+            self.advance();
+            ast::DataType::Bit(keyword)
+        } else if self.token_is(&TokenKind::Real) {
+            let keyword = Keyword::try_from(self.peek_token)?;
+            self.advance();
+            ast::DataType::Real(keyword)
+        } else if self.token_is(&TokenKind::Date) {
+            let keyword = Keyword::try_from(self.peek_token)?;
+            self.advance();
+            ast::DataType::Date(keyword)
+        } else if self.token_is(&TokenKind::Datetime) {
+            let keyword = Keyword::try_from(self.peek_token)?;
+            self.advance();
+            ast::DataType::Datetime(keyword)
+        } else if self.token_is(&TokenKind::Time) {
+            let keyword = Keyword::try_from(self.peek_token)?;
+            self.advance();
+            ast::DataType::Time(keyword)
+        } else if self.token_is(&TokenKind::Float) {
+            let keyword = Keyword::try_from(self.peek_token)?;
+            self.advance();
+            let float_precision = self.parse_float_precision()?;
+            ast::DataType::Float(keyword, float_precision)
+        } else if self.token_is(&TokenKind::Decimal) {
+            let keyword = Keyword::try_from(self.peek_token)?;
+            self.advance();
+            let numeric_size = self.parse_numeric_size()?;
+            ast::DataType::Decimal(keyword, numeric_size)
+        } else if self.token_is(&TokenKind::Numeric) {
+            let keyword = Keyword::try_from(self.peek_token)?;
+            self.advance();
+            let numeric_size = self.parse_numeric_size()?;
+            ast::DataType::Numeric(keyword, numeric_size)
+        } else if self.token_is(&TokenKind::Varchar) {
+            let keyword = Keyword::try_from(self.peek_token)?;
+            self.advance();
+            let float_precision = self.parse_float_precision()?;
+            ast::DataType::Varchar(keyword, float_precision)
+        } else {
+            return parse_error(ParseErrorType::ExpectedDataType);
+        };
+
+        Ok(data_type)
+    }
+
+    fn parse_float_precision(&mut self) -> Result<Option<u32>, ParseError<'a>> {
+        if self.token_is(&TokenKind::LeftParen) {
+            let _ = self.expect_token(&TokenKind::LeftParen)?;
+            let numeric_literal = match self.peek_token {
+                Some(token) => ast::Expression::try_from(token)?,
+                _ => unreachable!(),
+            };
+            let size: u32 = match numeric_literal {
+                ast::Expression::NumberLiteral(n) => match n.content.parse() {
+                    Ok(n) => n,
+                    Err(_) => return parse_error(ParseErrorType::ExpectedFloatPrecision),
+                },
+                _ => return parse_error(ParseErrorType::ExpectedFloatPrecision),
+            };
+            let _ = self.expect_token(&TokenKind::RightParen)?;
+            Ok(Some(size))
+        } else {
+            Ok(None)
+        }
+    }
+
+    fn parse_numeric_size(&mut self) -> Result<Option<ast::NumericSize>, ParseError<'a>> {
+        let _ = self.expect_token(&TokenKind::LeftParen)?;
+        if self.token_is(&TokenKind::RightParen) {
+            return Ok(None);
+        }
+
+        let float_precision = match self.parse_float_precision()? {
+            Some(p) => p,
+            None => return parse_error(ParseErrorType::ExpectedFloatPrecision),
+        };
+
+        let scale = if self.token_is(&TokenKind::Comma) {
+            let _ = self.expect_token(&TokenKind::Comma)?;
+            Some(self.parse_numeric_scale()?)
+        } else {
+            None
+        };
+
+        let _ = self.expect_token(&TokenKind::RightParen)?;
+
+        Ok(Some(ast::NumericSize {
+            precision: float_precision,
+            scale,
+        }))
+    }
+
+    fn parse_numeric_scale(&mut self) -> Result<u32, ParseError<'a>> {
+        let numeric_literal = match self.peek_token {
+            Some(token) => ast::Expression::try_from(token)?,
+            _ => unreachable!(),
+        };
+        let size: u32 = match numeric_literal {
+            ast::Expression::NumberLiteral(n) => match n.content.parse() {
+                Ok(n) => n,
+                Err(_) => return parse_error(ParseErrorType::ExpectedFloatPrecision),
+            },
+            _ => return parse_error(ParseErrorType::ExpectedFloatPrecision),
+        };
+
+        Ok(size)
+    }
+
     fn parse_expression(
         &mut self,
         precedence: Precedence,
@@ -834,11 +978,8 @@ impl<'a> Parser<'a> {
         // check if the current token is an identifier
         // or if it is a prefix operator
         let mut left_expression = self.parse_prefix_expression()?;
-
         dbg!(&left_expression);
-        dbg!(self.peek_token);
-        dbg!(self.peek_precedence());
-        dbg!(precedence);
+
         // parse the infix expression
         while precedence < self.peek_precedence() {
             left_expression = self.parse_infix_expression(left_expression)?;
@@ -849,10 +990,7 @@ impl<'a> Parser<'a> {
 
     fn parse_prefix_expression(&mut self) -> Result<ast::Expression, ParseError<'a>> {
         if self.token_is_any(&SELECT_ITEM_TYPE_START) {
-            let mut expr = match self.peek_token {
-                Some(token) => ast::Expression::try_from(token)?,
-                _ => unreachable!(),
-            };
+            let mut expr = ast::Expression::try_from(self.peek_token)?;
 
             let mut could_be_compound = false;
             if self.token_is_any(&[TokenKind::Identifier(""), TokenKind::QuotedIdentifier("")]) {
@@ -873,10 +1011,7 @@ impl<'a> Parser<'a> {
             // self.advance();
             return Ok(expr);
         } else if self.token_is_any(BUILTIN_FN_START) {
-            let fn_name = ast::Expression::Keyword(match self.peek_token {
-                Some(token) => ast::Keyword::try_from(token)?,
-                _ => unreachable!(),
-            });
+            let fn_name = ast::Expression::Keyword(ast::Keyword::try_from(self.peek_token)?);
 
             self.advance();
             // parse user defined function
@@ -886,16 +1021,10 @@ impl<'a> Parser<'a> {
 
             unreachable!();
         } else if self.token_is_any(&[TokenKind::Minus, TokenKind::Plus]) {
-            let unary_op = match self.peek_token {
-                Some(token) => ast::UnaryOperator::try_from(token)?,
-                _ => unreachable!(),
-            };
+            let unary_op = ast::UnaryOperator::try_from(self.peek_token)?;
 
             self.advance();
-            let right_expr = match self.peek_token {
-                Some(token) => ast::Expression::try_from(token)?,
-                _ => unreachable!(),
-            };
+            let right_expr = ast::Expression::try_from(self.peek_token)?;
             match right_expr {
                 ast::Expression::NumberLiteral(_) => {}
                 _ => return self.unexpected_token(vec!["numeric literal".to_string()]),
@@ -906,7 +1035,9 @@ impl<'a> Parser<'a> {
                 right: Box::new(right_expr),
             });
         } else if self.token_is(&TokenKind::Cast) {
-            // let expr = self.parse_case_exp
+            let expr = self.parse_cast_expression()?;
+            dbg!(&expr);
+            return Ok(expr);
         }
 
         self.unexpected_token(vec!["expression".to_string()])
@@ -945,10 +1076,7 @@ impl<'a> Parser<'a> {
             TokenKind::LessThan,
             TokenKind::LessThanEqual,
         ]) {
-            let op = match self.peek_token {
-                Some(token) => ast::ComparisonOperator::try_from(token)?,
-                _ => unreachable!(),
-            };
+            let op = ast::ComparisonOperator::try_from(self.peek_token)?;
             let precedence = self.peek_precedence();
 
             self.advance();

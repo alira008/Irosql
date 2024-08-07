@@ -232,6 +232,18 @@ impl<'a> TryFrom<Token<'a>> for Keyword {
     }
 }
 
+impl<'a> TryFrom<Option<Token<'a>>> for Keyword {
+    type Error = ParseError<'a>;
+
+    fn try_from(value: Option<Token<'a>>) -> Result<Self, Self::Error> {
+        if let Some(token) = value {
+            Keyword::try_from(token)
+        }else{
+            parse_error(ParseErrorType::ExpectedKeyword)
+        }
+    }
+}
+
 impl fmt::Display for Keyword {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "{}", self.kind)

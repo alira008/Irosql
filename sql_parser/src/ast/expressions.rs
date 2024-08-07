@@ -188,6 +188,18 @@ impl<'a> TryFrom<Token<'a>> for ComparisonOperator {
     }
 }
 
+impl<'a> TryFrom<Option<Token<'a>>> for ComparisonOperator {
+    type Error = ParseError<'a>;
+
+    fn try_from(value: Option<Token<'a>>) -> Result<Self, Self::Error> {
+        if let Some(token) = value {
+            ComparisonOperator::try_from(token)
+        } else {
+            unreachable!()
+        }
+    }
+}
+
 impl ArithmeticOperator {
     pub fn new(location: Span, kind: ArithmeticOperatorKind) -> Self {
         Self { location, kind }
@@ -222,6 +234,18 @@ impl<'a> TryFrom<Token<'a>> for ArithmeticOperator {
     }
 }
 
+impl<'a> TryFrom<Option<Token<'a>>> for ArithmeticOperator {
+    type Error = ParseError<'a>;
+
+    fn try_from(value: Option<Token<'a>>) -> Result<Self, Self::Error> {
+        if let Some(token) = value {
+            ArithmeticOperator::try_from(token)
+        } else {
+            unreachable!()
+        }
+    }
+}
+
 impl UnaryOperator {
     pub fn new(location: Span, kind: UnaryOperatorKind) -> Self {
         Self { location, kind }
@@ -250,6 +274,18 @@ impl<'a> TryFrom<Token<'a>> for UnaryOperator {
     }
 }
 
+impl<'a> TryFrom<Option<Token<'a>>> for UnaryOperator {
+    type Error = ParseError<'a>;
+
+    fn try_from(value: Option<Token<'a>>) -> Result<Self, Self::Error> {
+        if let Some(token) = value {
+            UnaryOperator::try_from(token)
+        } else {
+            unreachable!()
+        }
+    }
+}
+
 impl Literal {
     pub fn new(location: Span, content: String) -> Self {
         Self { location, content }
@@ -269,6 +305,18 @@ impl<'a> TryFrom<Token<'a>> for Literal {
             _ => return parse_error(ParseErrorType::ExpectedKeyword),
         };
         Ok(Self::new(value.location(), content))
+    }
+}
+
+impl<'a> TryFrom<Option<Token<'a>>> for Literal {
+    type Error = ParseError<'a>;
+
+    fn try_from(value: Option<Token<'a>>) -> Result<Self, Self::Error> {
+        if let Some(token) = value {
+            Literal::try_from(token)
+        } else {
+            unreachable!()
+        }
     }
 }
 
@@ -294,6 +342,18 @@ impl<'a> TryFrom<Token<'a>> for Expression {
             _ => return parse_error(ParseErrorType::ExpectedKeyword),
         };
         Ok(expr)
+    }
+}
+
+impl<'a> TryFrom<Option<Token<'a>>> for Expression {
+    type Error = ParseError<'a>;
+
+    fn try_from(value: Option<Token<'a>>) -> Result<Self, Self::Error> {
+        if let Some(token) = value {
+            Expression::try_from(token)
+        } else {
+            unreachable!()
+        }
     }
 }
 
