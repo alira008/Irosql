@@ -316,32 +316,6 @@ impl<'a> Parser<'a> {
         }
         parse_error(ParseErrorType::ExpectedKeyword)
     }
-
-    fn consume_keyword_many(
-        &mut self,
-        kinds: &[TokenKind],
-    ) -> Result<Vec<Keyword>, ParseError<'a>> {
-        let mut keywords = vec![];
-        for kind in kinds {
-            let keyword = self.consume_keyword(*kind)?;
-            keywords.push(keyword);
-        }
-
-        Ok(keywords)
-    }
-
-    // fn maybe_identifier(&mut self) -> Option<(Span, &'a str)> {
-    //     match &self.current_token {
-    //         Some(token) if matches!(token.kind_as_ref(), TokenKind::Identifier(..)) => {
-    //             self.advance();
-    //             Some((token.location(), val))
-    //         }
-    //         t => {
-    //             self.current_token = t;
-    //             None
-    //         }
-    //     }
-    // }
 }
 
 impl<'a> Parser<'a> {
@@ -365,18 +339,18 @@ impl<'a> Parser<'a> {
                 TokenKind::Select => {
                     return Ok(ast::Statement::Select(self.parse_select_statement()?))
                 }
-                // Keyword::INSERT => {
+                // TokenKind::INSERT => {
                 //     return Ok(ast::Statement::Insert(self.parse_insert_statement()?))
                 // }
-                // Keyword::UPDATE => {
+                // TokenKind::UPDATE => {
                 //     return Ok(ast::Statement::Update(self.parse_update_statement()?))
                 // }
-                // Keyword::DELETE => {
+                // TokenKind::DELETE => {
                 //     return Ok(ast::Statement::Delete(self.parse_delete_statement()?))
                 // }
-                // Keyword::WITH => return self.parse_cte_statement(),
-                // Keyword::DECLARE => return self.parse_declare_statement(),
-                // Keyword::SET => return self.parse_set_local_variable_statement(),
+                // TokenKind::WITH => return self.parse_cte_statement(),
+                // TokenKind::DECLARE => return self.parse_declare_statement(),
+                // TokenKind::SET => return self.parse_set_local_variable_statement(),
                 // TokenKind::Exec | TokenKind::Execute => return self.parse_execute_statement(),
                 _ => return parse_error(ParseErrorType::ExpectedKeyword),
             },
