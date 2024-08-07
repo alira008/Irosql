@@ -1257,7 +1257,29 @@ impl<'a> Parser<'a> {
                 left: Box::new(left),
                 right: Box::new(right),
             });
+        } else if self.token_is_any(&[
+            TokenKind::Plus,
+            TokenKind::Minus,
+            TokenKind::Asterisk,
+            TokenKind::ForwardSlash,
+            TokenKind::PercentSign,
+        ]) {
+            let op = ast::ArithmeticOperator::try_from(self.peek_token)?;
+            let precedence = self.peek_precedence();
+
+            self.advance();
+            dbg!(self.peek_token);
+            let right = self.parse_expression(precedence)?;
+
+            dbg!(&left);
+            dbg!(&right);
+            return Ok(ast::Expression::Arithmetic {
+                operator: op,
+                left: Box::new(left),
+                right: Box::new(right),
+            });
         }
+
 
         self.unexpected_token(vec!["expression".to_string()])
     }
