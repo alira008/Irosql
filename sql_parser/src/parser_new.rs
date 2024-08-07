@@ -15,6 +15,9 @@ const SELECT_ITEM_TYPE_START: &'static [TokenKind<'static>] = &[
     TokenKind::Plus,
 ];
 
+const GROUP_BY_START: &'static [TokenKind<'static>] =
+    &[TokenKind::Identifier(""), TokenKind::QuotedIdentifier("")];
+
 const BUILTIN_FN_START: &'static [TokenKind<'static>] = &[
     TokenKind::Abs,
     TokenKind::Acos,
@@ -218,6 +221,20 @@ impl<'a> Parser<'a> {
         )
     }
 
+    fn expect_group_by_expression_start(&mut self) -> Result<(), ParseError<'a>> {
+        if let Some(token) = self.peek_token {
+            if token.kind_as_ref().builtin_fn() {
+                return Ok(());
+            }
+            for start_token in GROUP_BY_START {
+                if start_token.shallow_eq_token(token.kind_as_ref()) {
+                    return Ok(());
+                }
+            }
+        }
+        self.unexpected_token(GROUP_BY_START.iter().map(|s| s.to_string()).collect())
+    }
+
     fn expect_order_by_args_start(&mut self) -> Result<(), ParseError<'a>> {
         if let Some(token) = self.peek_token {
             for start_token in ORDER_BY_ARGS_START {
@@ -361,6 +378,20 @@ impl<'a> Parser<'a> {
 
         if let Some(kw) = self.maybe_keyword(TokenKind::Where) {
             select_statement.where_clause = Some(self.parse_where_clause(kw)?);
+        }
+
+        if let Some(kw) = self.maybe_keyword(TokenKind::Group) {
+            let group_by_kws = vec![kw, self.consume_keyword(TokenKind::By)?];
+            select_statement.group_by = Some(self.parse_group_by_clause(group_by_kws)?);
+        }
+
+        if let Some(kw) = self.maybe_keyword(TokenKind::Having) {
+            select_statement.having = Some(self.parse_having_clause(kw)?);
+        }
+
+        if let Some(kw) = self.maybe_keyword(TokenKind::Order) {
+            let order_by_kws = vec![kw, self.consume_keyword(TokenKind::By)?];
+            select_statement.order_by = Some(self.parse_order_by_clause(order_by_kws)?);
         }
 
         return Ok(select_statement);
@@ -819,6 +850,142 @@ impl<'a> Parser<'a> {
             end_bound_keywords: Some(end_bound_keywords),
             end: Some(window_frame_bound_end),
         });
+    }
+
+    fn parse_group_by_clause(
+        &mut self,
+        group_by_kws: Vec<Keyword>,
+    ) -> Result<ast::GroupByClause, ParseError<'a>> {
+        let mut expressions: Vec<ast::Expression> = vec![];
+        loop {
+            self.expect_group_by_expression_start()?;
+            dbg!(self.peek_token);
+            let expression = self.parse_expression(Precedence::Lowest)?;
+            dbg!(self.peek_token);
+
+            expressions.push(expression);
+            if !self.token_is(&TokenKind::Comma) {
+                break;
+            }
+            self.advance();
+        }
+
+        if expressions.is_empty() {
+            return parse_error(ParseErrorType::EmptyGroupByClause);
+        }
+
+        Ok(ast::GroupByClause {
+            expressions,
+            group_by_kws,
+        })
+    }
+
+    fn parse_having_clause(
+        &mut self,
+        having_kw: Keyword,
+    ) -> Result<ast::HavingClause, ParseError<'a>> {
+        let expression = self.parse_expression(Precedence::Lowest)?;
+        // todo: add check for expression type
+
+        Ok(ast::HavingClause {
+            having_kw,
+            expression,
+        })
+    }
+
+    fn parse_order_by_clause(
+        &mut self,
+        order_by_kws: Vec<Keyword>,
+    ) -> Result<ast::OrderByClause, ParseError<'a>> {
+        let args = self.parse_order_by_args()?;
+
+        let offset_fetch_clause = if let Some(kw) = self.maybe_keyword(TokenKind::Offset) {
+            Some(self.parse_offset_fetch_clause(kw)?)
+        } else {
+            None
+        };
+        // todo: add check for expression type
+
+        Ok(ast::OrderByClause {
+            order_by_kws,
+            expressions: args,
+            offset_fetch_clause,
+        })
+    }
+
+    fn parse_offset_fetch_clause(
+        &mut self,
+        offset_kw: Keyword,
+    ) -> Result<ast::OffsetFetchClause, ParseError<'a>> {
+        let offset = self.parse_offset_clause(offset_kw)?;
+
+        let fetch = if let Some(kw) = self.maybe_keyword(TokenKind::Fetch) {
+            Some(self.parse_fetch_clause(kw)?)
+        } else {
+            None
+        };
+
+        Ok(ast::OffsetFetchClause { offset, fetch })
+    }
+
+    fn parse_offset_clause(
+        &mut self,
+        offset_kw: Keyword,
+    ) -> Result<ast::OffsetArg, ParseError<'a>> {
+        let offset = self.parse_expression(Precedence::Lowest)?;
+
+        let row_or_rows;
+        let row_or_rows_kw = if let Some(kw) = self.maybe_keyword(TokenKind::Row) {
+            row_or_rows = ast::RowOrRows::Row;
+            kw
+        } else {
+            let kw = self.consume_keyword(TokenKind::Rows)?;
+            row_or_rows = ast::RowOrRows::Rows;
+            kw
+        };
+
+        Ok(ast::OffsetArg {
+            offset_kw,
+            value: offset,
+            row_or_rows_kw,
+            row: row_or_rows,
+        })
+    }
+
+    fn parse_fetch_clause(&mut self, fetch_kw: Keyword) -> Result<ast::FetchArg, ParseError<'a>> {
+        let next_or_first;
+        let next_or_first_kw = if let Some(kw) = self.maybe_keyword(TokenKind::First) {
+            next_or_first = ast::NextOrFirst::First;
+            kw
+        } else {
+            let kw = self.consume_keyword(TokenKind::Next)?;
+            next_or_first = ast::NextOrFirst::Next;
+            kw
+        };
+
+        let fetch = self.parse_expression(Precedence::Lowest)?;
+
+        let row_or_rows;
+        let row_or_rows_kw = if let Some(kw) = self.maybe_keyword(TokenKind::Row) {
+            row_or_rows = ast::RowOrRows::Row;
+            kw
+        } else {
+            let kw = self.consume_keyword(TokenKind::Rows)?;
+            row_or_rows = ast::RowOrRows::Rows;
+            kw
+        };
+
+        let only_kw = self.consume_keyword(TokenKind::Only)?;
+
+        Ok(ast::FetchArg {
+            fetch_kw,
+            value: fetch,
+            first_or_next_kw: next_or_first_kw,
+            first: next_or_first,
+            row_or_rows_kw,
+            row: row_or_rows,
+            only_kw,
+        })
     }
 
     fn parse_cast_expression(&mut self) -> Result<ast::Expression, ParseError<'a>> {

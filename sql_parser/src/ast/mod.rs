@@ -1,17 +1,16 @@
 mod data_type;
 mod expressions;
-mod utils;
 mod keyword;
+mod utils;
 
 use crate::token::Token;
 use core::fmt;
-use std::fmt::Write;
-use sql_lexer::Span;
-pub use keyword::{Keyword, KeywordKind};
-pub use expressions::*;
-pub use utils::*;
 pub use data_type::DataType;
 pub use data_type::NumericSize;
+pub use expressions::*;
+pub use keyword::{Keyword, KeywordKind};
+use sql_lexer::Span;
+pub use utils::*;
 
 #[derive(Debug, PartialEq, Clone)]
 pub enum Symbol {
@@ -147,11 +146,9 @@ pub struct SelectStatement {
     pub into_table: Option<IntoArg>,
     pub table: Option<TableArg>,
     pub where_clause: Option<WhereClause>,
-    pub group_by: Vec<Expression>,
-    pub having: Option<Expression>,
-    pub order_by: Vec<OrderByArg>,
-    pub offset: Option<OffsetArg>,
-    pub fetch: Option<FetchArg>,
+    pub group_by: Option<GroupByClause>,
+    pub having: Option<HavingClause>,
+    pub order_by: Option<OrderByClause>,
 }
 
 impl SelectStatement {
@@ -171,6 +168,31 @@ pub struct Top {
 #[derive(Debug, PartialEq, Clone)]
 pub struct WhereClause {
     pub where_kw: Keyword,
+    pub expression: Expression,
+}
+
+#[derive(Debug, PartialEq, Clone)]
+pub struct GroupByClause {
+    pub group_by_kws: Vec<Keyword>,
+    pub expressions: Vec<Expression>,
+}
+
+#[derive(Debug, PartialEq, Clone)]
+pub struct OrderByClause {
+    pub order_by_kws: Vec<Keyword>,
+    pub expressions: Vec<OrderByArg>,
+    pub offset_fetch_clause: Option<OffsetFetchClause>,
+}
+
+#[derive(Debug, PartialEq, Clone)]
+pub struct OffsetFetchClause {
+    pub offset: OffsetArg,
+    pub fetch: Option<FetchArg>,
+}
+
+#[derive(Debug, PartialEq, Clone)]
+pub struct HavingClause {
+    pub having_kw: Keyword,
     pub expression: Expression,
 }
 
@@ -232,7 +254,9 @@ pub struct TableArg {
 
 #[derive(Debug, PartialEq, Clone)]
 pub struct OffsetArg {
+    pub offset_kw: Keyword,
     pub value: Expression,
+    pub row_or_rows_kw: Keyword,
     // either ROW or ROWS
     pub row: RowOrRows,
 }
@@ -245,11 +269,15 @@ pub enum RowOrRows {
 
 #[derive(Debug, PartialEq, Clone)]
 pub struct FetchArg {
+    pub fetch_kw: Keyword,
     pub value: Expression,
     // either NEXT or FIRST
     pub first: NextOrFirst,
+    pub first_or_next_kw: Keyword,
     // either ROW or ROWS
     pub row: RowOrRows,
+    pub row_or_rows_kw: Keyword,
+    pub only_kw: Keyword,
 }
 
 #[derive(Debug, PartialEq, Clone, Copy)]
@@ -490,30 +518,31 @@ impl fmt::Display for SelectStatement {
         }
 
         // GROUPING
-        if !self.group_by.is_empty() {
-            f.write_str(" GROUP BY ")?;
-            display_list_comma_separated(&self.group_by, f)?;
+        if let Some(group_by_clause) = &self.group_by {
+            f.write_str(" ")?;
+            display_list_delimiter_separated(&group_by_clause.group_by_kws, " ", f)?;
+            f.write_str(" ")?;
+            display_list_comma_separated(&group_by_clause.expressions, f)?;
         }
 
         // HAVING
         if let Some(having_clause) = &self.having {
-            write!(f, " HAVING {}", having_clause)?;
+            write!(
+                f,
+                " {} {}",
+                having_clause.having_kw, having_clause.expression
+            )?;
         }
 
         // ORDER BY
-        if !self.order_by.is_empty() {
-            f.write_str(" ORDER BY ")?;
-            display_list_comma_separated(&self.order_by, f)?;
-        }
-
-        // OFFSET
-        if let Some(offset) = &self.offset {
-            write!(f, " {}", offset)?;
-        }
-
-        // FETCH
-        if let Some(fetch) = &self.fetch {
-            write!(f, " {}", fetch)?;
+        if let Some(order_by_clause) = &self.order_by {
+            f.write_str(" ")?;
+            display_list_delimiter_separated(&order_by_clause.order_by_kws, " ", f)?;
+            f.write_str(" ")?;
+            display_list_comma_separated(&order_by_clause.expressions, f)?;
+            if let Some(offset_fetch_clause) = &order_by_clause.offset_fetch_clause {
+                write!(f, "{}", offset_fetch_clause)?;
+            }
         }
 
         Ok(())
@@ -538,6 +567,18 @@ impl fmt::Display for Top {
 impl fmt::Display for WhereClause {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "{} {}", self.where_kw, self.expression)?;
+
+        Ok(())
+    }
+}
+
+impl fmt::Display for OffsetFetchClause {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}", &self.offset)?;
+
+        if let Some(fetch) = &self.fetch {
+            write!(f, "{}", fetch)?;
+        }
 
         Ok(())
     }
@@ -636,7 +677,7 @@ impl fmt::Display for TableArg {
 
 impl fmt::Display for OffsetArg {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "OFFSET {} {}", self.value, self.row)
+        write!(f, " {} {} {}", self.offset_kw, self.value, self.row_or_rows_kw)
     }
 }
 
@@ -651,7 +692,7 @@ impl fmt::Display for RowOrRows {
 
 impl fmt::Display for FetchArg {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "FETCH {} {} {} ONLY", self.first, self.value, self.row)
+        write!(f, " {} {} {} {} {}", self.fetch_kw, self.first_or_next_kw, self.value, self.row_or_rows_kw, self.only_kw)
     }
 }
 

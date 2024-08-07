@@ -12,6 +12,7 @@ pub enum ParseErrorType<'a> {
     ExpectedKeyword,
     ExpectedFunctionName,
     EmptySelectColumns,
+    EmptyGroupByClause,
     EmptyPartitionByClause,
     EmptyOrderByArgs,
     ExpectedDataType,

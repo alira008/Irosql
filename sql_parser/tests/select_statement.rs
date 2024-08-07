@@ -227,3 +227,73 @@ fn select_statement_with_where_clause_three_with_cast_two() {
 
     assert_eq!(expected_query, query.to_string());
 }
+
+#[test]
+fn select_statement_with_group_by() {
+    let input = r"SELECT Symbol, LastPrice, PC 'PercentChange' from MarketData group 
+    by Symbol, Exchange";
+    let mut expected_query = String::from("select Symbol, LastPrice, PC 'PercentChange'");
+    expected_query += " from MarketData group by Symbol, Exchange";
+    let lexer = Lexer::new(input);
+    let mut parser = Parser::new(lexer);
+    let query = parser.parse();
+
+    assert_eq!(expected_query, query.to_string());
+}
+
+#[test]
+fn select_statement_with_having() {
+    let input = r"SELECT Symbol, LastPrice, PC 'PercentChange' from MarketData having
+    LastPrice > 32";
+    let mut expected_query = String::from("select Symbol, LastPrice, PC 'PercentChange'");
+    expected_query += " from MarketData having LastPrice > 32";
+    let lexer = Lexer::new(input);
+    let mut parser = Parser::new(lexer);
+    let query = parser.parse();
+
+    assert_eq!(expected_query, query.to_string());
+}
+
+#[test]
+fn select_statement_with_where_and_order_by() {
+    let input = r"SELECT Symbol, LastPrice, PC 'PercentChange' from MarketData where Symbol =
+    'amzn' and PercentChange > 2 order by QuoteTime, Symbol desc offset 4 rows fetch first
+    50 row only";
+    let mut expected_query = String::from("select Symbol, LastPrice, PC 'PercentChange'");
+    expected_query += " from MarketData where Symbol = 'amzn' and PercentChange > 2";
+    expected_query += " order by QuoteTime, Symbol desc offset 4 rows fetch first 50 row only";
+    let lexer = Lexer::new(input);
+    let mut parser = Parser::new(lexer);
+    let query = parser.parse();
+
+    assert_eq!(expected_query, query.to_string());
+}
+
+#[test]
+fn select_statement_with_where_and_order_by_two() {
+    let input = r"SELECT Symbol, LastPrice, PC 'PercentChange' from MarketData where Symbol =
+    'amzn' and PercentChange > 2 order by QuoteTime, Symbol desc offset 4 row ";
+    let mut expected_query = String::from("select Symbol, LastPrice, PC 'PercentChange'");
+    expected_query += " from MarketData where Symbol = 'amzn' and PercentChange > 2";
+    expected_query += " order by QuoteTime, Symbol desc offset 4 row";
+    let lexer = Lexer::new(input);
+    let mut parser = Parser::new(lexer);
+    let query = parser.parse();
+
+    assert_eq!(expected_query, query.to_string());
+}
+
+#[test]
+fn select_statement_with_where_and_order_by_three() {
+    let input = r"SELECT Symbol, LastPrice, PC 'PercentChange' from MarketData where Symbol =
+    'amzn' and PercentChange > 2 order by QuoteTime, Symbol desc offset 4 row fetch next
+    54 rows only";
+    let mut expected_query = String::from("select Symbol, LastPrice, PC 'PercentChange'");
+    expected_query += " from MarketData where Symbol = 'amzn' and PercentChange > 2";
+    expected_query += " order by QuoteTime, Symbol desc offset 4 row fetch next 54 rows only";
+    let lexer = Lexer::new(input);
+    let mut parser = Parser::new(lexer);
+    let query = parser.parse();
+
+    assert_eq!(expected_query, query.to_string());
+}
