@@ -10,9 +10,7 @@ use sql_lexer::{Lexer, LexicalError, Token, TokenKind};
 #[derive(Debug, Clone)]
 pub struct Parser<'a> {
     lexer: Lexer<'a>,
-    current_token: Option<Token<'a>>,
     peek_token: Option<Token<'a>>,
-    extra_peek_token: Option<Token<'a>>,
 
     lexer_errors: Vec<LexicalError>,
     parse_errors: Vec<ParseError<'a>>,
@@ -22,15 +20,11 @@ impl<'a> Parser<'a> {
     pub fn new(lexer: Lexer<'a>) -> Self {
         let mut parser = Parser {
             lexer,
-            current_token: None,
             peek_token: None,
-            extra_peek_token: None,
             lexer_errors: vec![],
             parse_errors: vec![],
         };
         parser.advance();
-        parser.advance();
-        // parser.advance();
         parser
     }
 
@@ -39,7 +33,7 @@ impl<'a> Parser<'a> {
     }
 
     fn next_token(&mut self) -> Option<Token<'a>> {
-        let token = self.current_token.take();
+        let token = self.peek_token.take();
         let mut next_tok;
 
         loop {
@@ -61,9 +55,7 @@ impl<'a> Parser<'a> {
             }
         }
 
-        self.current_token = self.peek_token.take();
-        self.peek_token = self.extra_peek_token.take();
-        self.extra_peek_token = next_tok.take();
+        self.peek_token = next_tok.take();
         token
     }
 
