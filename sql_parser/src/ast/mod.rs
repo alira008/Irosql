@@ -9,22 +9,7 @@ pub use data_type::DataType;
 pub use data_type::NumericSize;
 pub use expressions::*;
 pub use keyword::{Keyword, KeywordKind};
-use sql_lexer::Span;
 pub use utils::*;
-
-#[derive(Debug, PartialEq, Clone)]
-pub enum Symbol {
-    LeftParen { start: Span, end: Span },
-}
-
-impl Default for Symbol {
-    fn default() -> Self {
-        Self::LeftParen {
-            start: Span::default(),
-            end: Span::default(),
-        }
-    }
-}
 
 #[derive(Debug, PartialEq, Clone)]
 pub struct CommonTableExpression {
@@ -210,15 +195,11 @@ pub enum TableSource {
     },
     Derived {
         query: Expression,
-        is_as: bool,
-        alias: String,
+        alias: Expression,
     },
-    Pivot,
-    Unpivot,
     TableValuedFunction {
         function: Expression,
-        is_as: bool,
-        alias: Option<String>,
+        alias: Option<Expression>,
     },
 }
 
@@ -601,31 +582,13 @@ impl fmt::Display for TableSource {
                 }
                 None => write!(f, "{}", name),
             },
-            TableSource::Derived {
-                query,
-                is_as,
-                alias,
-            } => {
-                if *is_as {
-                    write!(f, "{} AS {}", query, alias)
-                } else {
-                    write!(f, "{} {}", query, alias)
-                }
+            TableSource::Derived { query, alias } => {
+                write!(f, "{} {}", query, alias)
             }
-            TableSource::Pivot => write!(f, "PIVOT"),
-            TableSource::Unpivot => write!(f, "UNPIVOT"),
-            TableSource::TableValuedFunction {
-                function,
-                is_as,
-                alias,
-            } => {
+            TableSource::TableValuedFunction { function, alias } => {
                 write!(f, "{}", function)?;
                 if let Some(alias) = alias {
-                    if *is_as {
-                        write!(f, " AS {}", alias)?;
-                    } else {
-                        write!(f, " {}", alias)?;
-                    }
+                    write!(f, " {}", alias)?;
                 }
 
                 Ok(())
