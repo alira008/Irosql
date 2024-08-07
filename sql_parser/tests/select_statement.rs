@@ -513,3 +513,22 @@ fn select_statement_with_cte() {
 
     assert_eq!(expected_query, query.to_string());
 }
+
+#[test]
+fn select_statement_with_cte_two() {
+    let input = r"with testcte (testcol, poolc)as (select * from MarketLake), potato as (select
+    Symbol,Title, Author from News) SELECT Symbol, LastPrice, PercentChange from Market m inner
+    join testcte tc on tc.Symbol = m.Symbol inner join potato p on m.Symbol = p.Symbol where 
+    Symbol not like @TestPattern and LastPrice > 32";
+    let mut expected_query = String::from("with testcte (testcol, poolc) as (select * from");
+    expected_query += " MarketLake), potato as (select Symbol, Title, Author from News)";
+    expected_query += " select Symbol, LastPrice, PercentChange from Market m";
+    expected_query += " inner join testcte tc on tc.Symbol = m.Symbol";
+    expected_query += " inner join potato p on m.Symbol = p.Symbol";
+    expected_query += " where Symbol not like @TestPattern and LastPrice > 32";
+    let lexer = Lexer::new(input);
+    let mut parser = Parser::new(lexer);
+    let query = parser.parse();
+
+    assert_eq!(expected_query, query.to_string());
+}

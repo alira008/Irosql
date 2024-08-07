@@ -293,9 +293,10 @@ impl<'a> Parser<'a> {
                 query,
             });
 
-            if self.token_is(&TokenKind::Select) {
+            if !self.token_is(&TokenKind::Comma) {
                 break;
             }
+            self.advance();
         }
         let final_query = self.parse_select_statement()?;
         Ok(ast::Statement::CTE {
