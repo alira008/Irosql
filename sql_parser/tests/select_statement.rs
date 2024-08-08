@@ -1,6 +1,6 @@
 use sql_lexer::{Lexer, Span};
 use sql_parser::ast::{self, Keyword, KeywordKind};
-use sql_parser::parser_new::Parser;
+use sql_parser::Parser;
 
 #[test]
 fn basic_select_statement_new() {

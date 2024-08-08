@@ -1,5 +1,5 @@
 use sql_lexer::Lexer;
-use sql_parser::parser_new::Parser;
+use sql_parser::Parser;
 
 #[test]
 fn declare_local_variable_statement() {
