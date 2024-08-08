@@ -77,6 +77,20 @@ fn basic_select_statement_new_no_spans() {
 }
 
 #[test]
+fn basic_select_statement_reverse_assign_alias() {
+    let input =
+        "SELECT distInct all name, firstname = (select top 1 FirstName from Names), [dbo].lmao.bruhCalculate(bruh) from testtable";
+    let expected_query =
+        "select distinct all name, firstname = (select top 1 FirstName from Names), [dbo].lmao.bruhCalculate(bruh) from testtable";
+    let lexer = Lexer::new(input);
+    let mut parser = Parser::new(lexer);
+    let query = parser.parse();
+
+    assert_eq!(expected_query, query.to_string());
+}
+
+
+#[test]
 fn select_statement_with_builtin_fn() {
     let input = r"SELECT   name, sum(lastprice) over(partition by symbol, insertdate
     order by inserttime dESc rows betWEEN UNBOunded prECEDing and cURRENT ROW), [dbo].

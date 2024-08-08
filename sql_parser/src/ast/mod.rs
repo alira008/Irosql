@@ -100,6 +100,10 @@ pub enum SelectItem {
         as_kw: Option<Keyword>,
         alias: Expression,
     },
+    ReverseAliasAssign {
+        alias: Expression,
+        expression: Expression,
+    },
 }
 
 #[derive(Debug, PartialEq, Clone)]
@@ -446,6 +450,10 @@ impl fmt::Display for SelectItem {
                 }
 
                 write!(f, "{}", alias)?;
+                Ok(())
+            }
+            SelectItem::ReverseAliasAssign { alias, expression } => {
+                write!(f, "{} = {}", alias, expression)?;
                 Ok(())
             }
         }

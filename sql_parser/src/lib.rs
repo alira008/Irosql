@@ -1,8 +1,8 @@
 pub mod ast;
-pub mod visitor;
 pub mod error;
-mod operator;
 mod expr_start;
+mod operator;
+pub mod visitor;
 
 use crate::ast::Keyword;
 use crate::error::{parse_error, ParseError, ParseErrorType};
@@ -555,40 +555,58 @@ impl<'a> Parser<'a> {
             let expression = self.parse_expression(Precedence::Lowest)?;
             dbg!(&expression);
 
-            let as_kw = self.maybe_keyword(TokenKind::As);
-
-            // check for alias
-            if self.token_is_any(&[
-                TokenKind::Identifier(""),
-                TokenKind::QuotedIdentifier(""),
-                TokenKind::StringLiteral(""),
-            ]) {
-                let alias = ast::Expression::try_from(self.peek_token)?;
-                self.advance();
-
-                if matches!(expression, ast::Expression::Asterisk) {
-                    let select_item = ast::SelectItem::WildcardWithAlias {
-                        expression,
-                        as_kw,
-                        alias,
-                    };
-                    columns.push(select_item);
-                } else {
-                    let select_item = ast::SelectItem::WithAlias {
-                        expression,
-                        as_kw,
-                        alias,
-                    };
-                    columns.push(select_item);
-                }
-            } else if as_kw.is_none() {
-                if matches!(expression, ast::Expression::Asterisk) {
-                    columns.push(ast::SelectItem::Wildcard);
-                } else {
-                    columns.push(ast::SelectItem::Unnamed(expression));
-                }
+            // column_alias = expression
+            if matches!(
+                expression,
+                ast::Expression::Identifier(..)
+                    | ast::Expression::QuotedIdentifier(..)
+                    | ast::Expression::StringLiteral(..)
+                    | ast::Expression::LocalVariable(..)
+            ) && self.token_is(&TokenKind::Equal)
+            {
+                let _ = self.expect_token(&TokenKind::Equal)?;
+                let expr = self.parse_expression(Precedence::Lowest)?;
+                columns.push(ast::SelectItem::ReverseAliasAssign {
+                    alias: expression,
+                    expression: expr,
+                });
             } else {
-                return parse_error(ParseErrorType::MissingAliasAfterAsKeyword);
+                // normal checking for alias
+                let as_kw = self.maybe_keyword(TokenKind::As);
+
+                // check for alias
+                if self.token_is_any(&[
+                    TokenKind::Identifier(""),
+                    TokenKind::QuotedIdentifier(""),
+                    TokenKind::StringLiteral(""),
+                ]) {
+                    let alias = ast::Expression::try_from(self.peek_token)?;
+                    self.advance();
+
+                    if matches!(expression, ast::Expression::Asterisk) {
+                        let select_item = ast::SelectItem::WildcardWithAlias {
+                            expression,
+                            as_kw,
+                            alias,
+                        };
+                        columns.push(select_item);
+                    } else {
+                        let select_item = ast::SelectItem::WithAlias {
+                            expression,
+                            as_kw,
+                            alias,
+                        };
+                        columns.push(select_item);
+                    }
+                } else if as_kw.is_none() {
+                    if matches!(expression, ast::Expression::Asterisk) {
+                        columns.push(ast::SelectItem::Wildcard);
+                    } else {
+                        columns.push(ast::SelectItem::Unnamed(expression));
+                    }
+                } else {
+                    return parse_error(ParseErrorType::MissingAliasAfterAsKeyword);
+                }
             }
             dbg!(self.peek_token);
 
