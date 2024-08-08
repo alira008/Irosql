@@ -304,8 +304,8 @@ impl fmt::Display for CommonTableExpressionStatement {
         match &self {
             CommonTableExpressionStatement::Select(select) => write!(f, "{}", select),
             CommonTableExpressionStatement::Insert(insert) => write!(f, "{}", insert),
-            CommonTableExpressionStatement::Update(update) => write!(f, "{}", update),
-            CommonTableExpressionStatement::Delete(delete) => write!(f, "{}", delete),
+            // CommonTableExpressionStatement::Update(update) => write!(f, "{}", update),
+            // CommonTableExpressionStatement::Delete(delete) => write!(f, "{}", delete),
         }
     }
 }
