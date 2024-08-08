@@ -3,17 +3,13 @@ mod expressions;
 mod keyword;
 mod utils;
 
-use crate::error::parse_error;
-use crate::error::ParseError;
-use crate::error::ParseErrorType;
-use core::fmt;
-use std::fmt::Write;
-pub use data_type::DataType;
-pub use data_type::NumericSize;
 pub use expressions::*;
-pub use keyword::{Keyword, KeywordKind};
-use sql_lexer::{Span, Token, TokenKind};
 pub use utils::*;
+pub use data_type::{DataType, NumericSize};
+pub use keyword::{Keyword, KeywordKind};
+use crate::error::{parse_error, ParseError, ParseErrorType};
+use core::fmt;
+use sql_lexer::{Span, Token, TokenKind};
 
 #[derive(Debug, PartialEq, Clone)]
 pub struct CommonTableExpression {
