@@ -7,6 +7,7 @@ use crate::error::parse_error;
 use crate::error::ParseError;
 use crate::error::ParseErrorType;
 use core::fmt;
+use std::fmt::Write;
 pub use data_type::DataType;
 pub use data_type::NumericSize;
 pub use expressions::*;
@@ -41,11 +42,15 @@ pub enum Statement {
         ctes: Vec<CommonTableExpression>,
         statement: CommonTableExpressionStatement,
     },
-    // Declare(Vec<LocalVariable>),
-    // SetLocalVariable {
-    //     name: Token,
-    //     value: Expression,
-    // },
+    Declare {
+        declare_kw: Keyword,
+        variables: Vec<LocalVariable>,
+    },
+    SetLocalVariable {
+        set_kw: Keyword,
+        name: Expression,
+        value: Expression,
+    },
     Execute {
         exec_kw: Keyword,
         procedure_name: Expression,
@@ -65,13 +70,12 @@ pub struct ProcedureParameterName {
     pub content: String,
 }
 
-// #[derive(Debug, PartialEq, Clone)]
-// pub struct LocalVariable {
-//     pub name: Token,
-//     pub is_as: bool,
-//     pub data_type: DataType,
-//     pub value: Option<Expression>,
-// }
+#[derive(Debug, PartialEq, Clone)]
+pub struct LocalVariable {
+    pub name: Expression,
+    pub data_type: DataType,
+    pub value: Option<Expression>,
+}
 
 #[derive(Debug, PartialEq, Clone)]
 pub struct Query {
@@ -305,11 +309,19 @@ impl fmt::Display for Statement {
                 display_list_comma_separated(ctes, f)?;
                 write!(f, " {}", statement)
             }
-            // Statement::Declare(local_variables) => {
-            //     write!(f, "DECLARE ")?;
-            //     display_list_comma_separated(local_variables, f)
-            // }
-            // Statement::SetLocalVariable { name, value } => write!(f, "SET {} = {}", name, value),
+            Statement::Declare {
+                declare_kw,
+                variables,
+            } => {
+                write!(f, "{} ", declare_kw)?;
+                display_list_comma_separated(variables, f)?;
+                f.write_str(";")
+            }
+            Statement::SetLocalVariable {
+                set_kw,
+                name,
+                value,
+            } => write!(f, "{} {} = {};", set_kw, name, value),
             Statement::Execute {
                 exec_kw,
                 procedure_name,
@@ -325,16 +337,16 @@ impl fmt::Display for Statement {
     }
 }
 
-// impl fmt::Display for LocalVariable {
-//     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-//         write!(f, "{}", self.name)?;
-//         if self.is_as {
-//             write!(f, " AS {}", self.data_type)
-//         } else {
-//             write!(f, " {}", self.data_type)
-//         }
-//     }
-// }
+impl fmt::Display for LocalVariable {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{} {}", self.name, self.data_type)?;
+        if let Some(value) = &self.value {
+            write!(f, " = {}", value)?;
+        }
+
+        Ok(())
+    }
+}
 
 impl fmt::Display for ProcedureParameter {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {

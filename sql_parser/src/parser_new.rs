@@ -257,13 +257,61 @@ impl<'a> Parser<'a> {
                 //     return Ok(ast::Statement::Delete(self.parse_delete_statement()?))
                 // }
                 TokenKind::With => return self.parse_cte_statement(),
-                // TokenKind::Declare => return self.parse_declare_statement(),
-                // TokenKind::Set => return self.parse_set_local_variable_statement(),
+                TokenKind::Declare => return self.parse_declare_statement(),
+                TokenKind::Set => return self.parse_set_local_variable_statement(),
                 TokenKind::Exec | TokenKind::Execute => return self.parse_execute_statement(),
                 _ => return parse_error(ParseErrorType::ExpectedKeyword),
             },
             None => todo!(),
         }
+    }
+
+    fn parse_set_local_variable_statement(&mut self) -> Result<ast::Statement, ParseError<'a>> {
+        let set_kw = self.consume_keyword(TokenKind::Set)?;
+        let local_variable =
+            ast::Expression::try_from(self.expect_token(&TokenKind::LocalVariable(""))?)?;
+        let _ = self.expect_token(&TokenKind::Equal)?;
+        let value = ast::Expression::try_from(self.peek_token)?;
+        self.advance();
+        let _ = self.expect_token(&TokenKind::SemiColon)?;
+
+        Ok(ast::Statement::SetLocalVariable {
+            set_kw,
+            name: local_variable,
+            value,
+        })
+    }
+
+    fn parse_declare_statement(&mut self) -> Result<ast::Statement, ParseError<'a>> {
+        let declare_kw = self.consume_keyword(TokenKind::Declare)?;
+
+        let mut variables = vec![];
+        loop {
+            let local_variable = self.expect_token(&TokenKind::LocalVariable(""))?;
+            let data_type = self.parse_data_type()?;
+            let value = if self.token_is(&TokenKind::Equal) {
+                self.advance();
+                Some(self.parse_expression(Precedence::Lowest)?)
+            } else {
+                None
+            };
+
+            variables.push(ast::LocalVariable {
+                name: ast::Expression::try_from(local_variable)?,
+                data_type,
+                value,
+            });
+            if !self.token_is(&TokenKind::Comma) {
+                break;
+            }
+            self.advance();
+        }
+        let _ = self.expect_token(&TokenKind::SemiColon)?;
+
+        Ok(ast::Statement::Declare {
+            declare_kw,
+            variables,
+        })
     }
 
     fn parse_cte_statement(&mut self) -> Result<ast::Statement, ParseError<'a>> {
