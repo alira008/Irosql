@@ -9,6 +9,13 @@ use crate::ast::{
 };
 
 pub trait Visitor<T> {
+    fn visit_query(&self, query: Query) -> T;
+    fn visit_expression(&self, expr: Expression) -> T;
+    fn visit_statement(&self, stmt: Statement) -> T;
+    fn visit_insert_statement(&self, stmt: InsertStatement) -> T;
+    fn visit_select_statement(&self, stmt: SelectStatement) -> T;
+    fn visit_common_table_expression_statement(&self, stmt: CommonTableExpressionStatement) -> T;
+
     fn visit_literal(&self, literal: Literal) -> T;
     fn visit_comparison_operator(&self, op: ComparisonOperator) -> T;
     fn visit_comparison_operator_kind(&self, op: ComparisonOperatorKind) -> T;
@@ -19,9 +26,6 @@ pub trait Visitor<T> {
     fn visit_keyword(&self, keyword: Keyword) -> T;
     fn visit_data_type(&self, data_type: DataType) -> T;
     fn visit_data_type_numeric_size(&self, numeric_size: NumericSize) -> T;
-    fn visit_expression(&self, expr: Expression) -> T;
-    fn visit_statement(&self, stmt: Statement) -> T;
-    fn visit_select_statement(&self, stmt: SelectStatement) -> T;
     fn visit_top_clause(&self, top_clause: Top) -> T;
     fn visit_select_item(&self, select_item: SelectItem) -> T;
     fn visit_table_clause(&self, table_clause: TableArg) -> T;
@@ -43,11 +47,8 @@ pub trait Visitor<T> {
         window_frame_bound: WindowFrameBound,
     ) -> T;
     fn visit_case_condition(&self, case_condition: CaseCondition) -> T;
-    fn visit_insert_statement(&self, stmt: InsertStatement) -> T;
-    fn visit_common_table_expression_statement(&self, stmt: CommonTableExpressionStatement) -> T;
     fn visit_common_table_expression(&self, cte: CommonTableExpression) -> T;
     fn visit_execute_statement_procedure_parameter(&self, param: ProcedureParameter) -> T;
     fn visit_execute_statement_procedure_parameter_name(&self, name: ProcedureParameterName) -> T;
     fn visit_local_variable(&self, local_variable: LocalVariable) -> T;
-    fn visit_query(&self, query: Query) -> T;
 }
