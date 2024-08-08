@@ -1,4 +1,4 @@
-// use sql_parser::visitor::{walk_query, Visitor};
+use sql_parser::visitor::{walk_query, Visitor};
 use sql_lexer::TokenKind;
 
 use crate::settings::{FormatterSettings, KeywordCase};

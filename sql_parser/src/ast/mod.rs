@@ -23,8 +23,8 @@ pub struct CommonTableExpression {
 pub enum CommonTableExpressionStatement {
     Select(SelectStatement),
     Insert(InsertStatement),
-    Update(UpdateStatement),
-    Delete(DeleteStatement),
+    // Update(UpdateStatement),
+    // Delete(DeleteStatement),
 }
 
 #[derive(Debug, PartialEq, Clone)]

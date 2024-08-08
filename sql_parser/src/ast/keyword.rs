@@ -6,8 +6,8 @@ use crate::error::{parse_error, ParseError, ParseErrorType};
 
 #[derive(Debug, PartialEq, Clone, Copy)]
 pub struct Keyword {
-    location: Span,
-    kind: KeywordKind,
+    pub location: Span,
+    pub kind: KeywordKind,
 }
 
 impl Keyword {
