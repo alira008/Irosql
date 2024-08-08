@@ -3,13 +3,13 @@ mod expressions;
 mod keyword;
 mod utils;
 
-pub use expressions::*;
-pub use utils::*;
-pub use data_type::{DataType, NumericSize};
-pub use keyword::{Keyword, KeywordKind};
 use crate::error::{parse_error, ParseError, ParseErrorType};
 use core::fmt;
+pub use data_type::{DataType, NumericSize};
+pub use expressions::*;
+pub use keyword::{Keyword, KeywordKind};
 use sql_lexer::{Span, Token, TokenKind};
+pub use utils::*;
 
 #[derive(Debug, PartialEq, Clone)]
 pub struct CommonTableExpression {
@@ -103,11 +103,25 @@ pub enum SelectItem {
 }
 
 #[derive(Debug, PartialEq, Clone)]
-pub struct InsertStatement {
-    pub top: Option<Top>,
-    pub table: Expression,
-    pub columns: Vec<Expression>,
-    pub values: Vec<Expression>,
+pub enum InsertStatement {
+    Values {
+        insert_kw: Keyword,
+        into_kw: Option<Keyword>,
+        object: Expression,
+        columns: Option<Vec<Expression>>,
+        values_kw: Keyword,
+        values: Vec<Expression>,
+    },
+    Table {
+        insert_kw: Keyword,
+        into_kw: Option<Keyword>,
+        object: Expression,
+        select_kw: Keyword,
+        top: Option<Top>,
+        columns: Vec<Expression>,
+        table: TableArg,
+        where_clause: Option<WhereClause>,
+    },
 }
 
 #[derive(Debug, PartialEq, Clone)]
@@ -440,19 +454,62 @@ impl fmt::Display for SelectItem {
 
 impl fmt::Display for InsertStatement {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "INSERT ")?;
-        if let Some(top) = &self.top {
-            write!(f, "{} ", top)?;
+        match self {
+            InsertStatement::Values {
+                insert_kw,
+                into_kw,
+                object,
+                columns,
+                values_kw,
+                values,
+            } => {
+                write!(f, "{}", insert_kw)?;
+                if let Some(into_kw) = into_kw {
+                    write!(f, " {}", into_kw)?;
+                }
+                write!(f, " {}", object)?;
+
+                if let Some(columns) = columns {
+                    f.write_str(" (")?;
+                    display_list_comma_separated(&columns, f)?;
+                    f.write_str(")")?;
+                }
+
+                write!(f, " {}", values_kw)?;
+
+                f.write_str(" (")?;
+                display_list_comma_separated(&values, f)?;
+                f.write_str(")")?;
+                Ok(())
+            }
+            InsertStatement::Table {
+                insert_kw,
+                into_kw,
+                object,
+                select_kw,
+                top,
+                columns,
+                table,
+                where_clause,
+            } => {
+                write!(f, "{}", insert_kw)?;
+                if let Some(into_kw) = into_kw {
+                    write!(f, " {}", into_kw)?;
+                }
+                write!(f, " {} {}", object, select_kw)?;
+                if let Some(top) = top {
+                    write!(f, " {}", top)?;
+                }
+                f.write_str(" ")?;
+                display_list_comma_separated(&columns, f)?;
+                write!(f, " {}", table)?;
+                if let Some(where_clause) = where_clause {
+                    write!(f, " {}", where_clause)?;
+                }
+
+                Ok(())
+            }
         }
-        write!(f, "INTO {} ", self.table)?;
-        if !self.columns.is_empty() {
-            write!(f, "(")?;
-            display_list_comma_separated(&self.columns, f)?;
-            write!(f, ") ")?;
-        }
-        write!(f, "VALUES (")?;
-        display_list_comma_separated(&self.values, f)?;
-        write!(f, ") ")
     }
 }
 

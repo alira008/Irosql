@@ -247,9 +247,8 @@ impl<'a> Parser<'a> {
                 TokenKind::Select => {
                     return Ok(ast::Statement::Select(self.parse_select_statement()?))
                 }
-                // TokenKind::Insert => {
-                //     return Ok(ast::Statement::Insert(self.parse_insert_statement()?))
-                // }
+                TokenKind::Insert => return self.parse_insert_statement(),
+
                 // TokenKind::Update => {
                 //     return Ok(ast::Statement::Update(self.parse_update_statement()?))
                 // }
@@ -263,6 +262,83 @@ impl<'a> Parser<'a> {
                 _ => return parse_error(ParseErrorType::ExpectedKeyword),
             },
             None => todo!(),
+        }
+    }
+
+    fn parse_insert_statement(&mut self) -> Result<ast::Statement, ParseError<'a>> {
+        let insert_kw = self.consume_keyword(TokenKind::Insert)?;
+        let into_kw = self.maybe_keyword(TokenKind::Into);
+        dbg!(self.peek_token);
+        let object = self.parse_object_table_name()?;
+
+        dbg!(self.peek_token);
+        if self.token_is(&TokenKind::Select) {
+            let select_kw = self.consume_keyword(TokenKind::Select)?;
+            let top = if let Some(kw) = self.maybe_keyword(TokenKind::Top) {
+                Some(self.parse_top_clause(kw)?)
+            } else {
+                None
+            };
+            let columns = self.parse_expression_list()?;
+            let from_kw = self.consume_keyword(TokenKind::From)?;
+            let table = self.parse_table_arg(from_kw)?;
+            let where_clause = if let Some(kw) = self.maybe_keyword(TokenKind::Where) {
+                Some(self.parse_where_clause(kw)?)
+            } else {
+                None
+            };
+            let insert_statement = ast::InsertStatement::Table {
+                insert_kw,
+                into_kw,
+                object,
+                select_kw,
+                top,
+                columns,
+                table,
+                where_clause,
+            };
+
+            Ok(ast::Statement::Insert(insert_statement))
+        } else {
+            let columns = if self.token_is(&TokenKind::LeftParen) {
+                let _ = self.expect_token(&TokenKind::LeftParen)?;
+                let columns = self.parse_expression_list()?;
+                let _ = self.expect_token(&TokenKind::RightParen)?;
+                Some(columns)
+            } else {
+                None
+            };
+            dbg!(&columns);
+            let values_kw = self.consume_keyword(TokenKind::Values)?;
+            let _ = self.expect_token(&TokenKind::LeftParen)?;
+            let values = self.parse_expression_list()?;
+            let _ = self.expect_token(&TokenKind::RightParen)?;
+
+            let insert_statement = ast::InsertStatement::Values {
+                insert_kw,
+                into_kw,
+                object,
+                columns,
+                values_kw,
+                values,
+            };
+
+            Ok(ast::Statement::Insert(insert_statement))
+        }
+    }
+
+    fn parse_object_table_name(&mut self) -> Result<ast::Expression, ParseError<'a>> {
+        if self.token_is_any(&[TokenKind::QuotedIdentifier(""), TokenKind::Identifier("")]) {
+            let object = ast::Expression::try_from(self.peek_token)?;
+            self.advance();
+
+            if self.token_is(&TokenKind::Period) {
+                Ok(self.parse_compound_identifier(object)?)
+            } else {
+                Ok(object)
+            }
+        } else {
+            parse_error(ParseErrorType::ExpectedObjectToInsertTo)
         }
     }
 

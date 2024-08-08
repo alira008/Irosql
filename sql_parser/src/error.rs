@@ -23,6 +23,7 @@ pub enum ParseErrorType<'a> {
     ExpectedUnboundedPrecedingCurrentRowOrNumberPreceding,
     ExpectedUnboundedPrecedingCurrentRowOrNumberFollowing,
     ExpectedLocalVariable,
+    ExpectedObjectToInsertTo,
     InvalidOrUnimplementedStatement,
 }
 
