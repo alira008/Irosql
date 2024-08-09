@@ -786,17 +786,29 @@ impl<'a> Parser<'a> {
             }
 
             let table_source = self.parse_table_source()?;
-            let on_kw = self.consume_keyword(TokenKind::On)?;
-            let search_condition = self.parse_expression(Precedence::Lowest)?;
 
-            let join = ast::Join {
-                join: join_keyword,
-                join_type,
-                on: on_kw,
-                table: table_source,
-                condition: Some(search_condition),
-            };
-            joins.push(join);
+            if self.token_is(&TokenKind::On) {
+                let on_kw = self.consume_keyword(TokenKind::On)?;
+                let search_condition = self.parse_expression(Precedence::Lowest)?;
+                let join = ast::Join {
+                    join: join_keyword,
+                    join_type,
+                    table: table_source,
+                    condition: Some(ast::JoinCondition {
+                        on_kw,
+                        condition: search_condition,
+                    }),
+                };
+                joins.push(join);
+            } else {
+                let join = ast::Join {
+                    join: join_keyword,
+                    join_type,
+                    table: table_source,
+                    condition: None,
+                };
+                joins.push(join);
+            }
         }
 
         Ok(joins)

@@ -241,9 +241,14 @@ pub enum JoinType {
 pub struct Join {
     pub join: Vec<Keyword>,
     pub join_type: JoinType,
-    pub on: Keyword,
     pub table: TableSource,
-    pub condition: Option<Expression>,
+    pub condition: Option<JoinCondition>,
+}
+
+#[derive(Debug, PartialEq, Clone)]
+pub struct JoinCondition {
+    pub on_kw: Keyword,
+    pub condition: Expression,
 }
 
 #[derive(Debug, PartialEq, Clone)]
@@ -722,8 +727,15 @@ impl fmt::Display for Join {
         display_list_delimiter_separated(&self.join, " ", f)?;
         write!(f, " {}", self.table)?;
         if let Some(condition) = &self.condition {
-            write!(f, " {} {}", self.on, condition)?;
+            write!(f, " {}", condition)?;
         }
+        Ok(())
+    }
+}
+
+impl fmt::Display for JoinCondition {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{} {}", self.on_kw, self.condition)?;
         Ok(())
     }
 }
