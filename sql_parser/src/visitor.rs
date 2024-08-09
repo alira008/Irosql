@@ -8,7 +8,7 @@ use crate::ast::{
     OffsetFetchClause, OrderByArg, OrderByClause, OverClause, ProcedureParameter,
     ProcedureParameterName, Query, RowOrRows, RowsOrRange, SelectItem, SelectStatement, Statement,
     TableArg, TableSource, Top, UnaryOperator, UnaryOperatorKind, WhereClause, WindowFrame,
-    WindowFrameBound,
+    WindowFrameBound, JoinCondition,
 };
 
 pub trait Visitor: Sized {
@@ -104,6 +104,9 @@ pub trait Visitor: Sized {
     }
     fn visit_table_join(&mut self, table_join: &Join) -> Self::Result {
         walk_table_join(self, table_join)
+    }
+    fn visit_table_join_condition(&mut self, table_join_condition: &JoinCondition) -> Self::Result {
+        walk_table_join_condition(self, table_join_condition)
     }
     fn visit_table_join_type(&mut self, _: &JoinType) -> Self::Result {
         Self::Result::output()
@@ -670,9 +673,15 @@ pub fn walk_table_source<V: Visitor>(visitor: &mut V, table_source: &TableSource
 pub fn walk_table_join<V: Visitor>(visitor: &mut V, table_join: &Join) -> V::Result {
     walk_list!(visitor, visit_keyword, &table_join.join);
     visitor.visit_table_join_type(&table_join.join_type);
-    visitor.visit_keyword(&table_join.on);
     visitor.visit_table_source(&table_join.table);
-    walk_opt!(visitor, visit_expression, &table_join.condition);
+    walk_opt!(visitor, visit_table_join_condition, &table_join.condition);
+
+    V::Result::output()
+}
+
+pub fn walk_table_join_condition<V: Visitor>(visitor: &mut V, table_join_condition: &JoinCondition) -> V::Result {
+    visitor.visit_keyword(&table_join_condition.on_kw);
+    visitor.visit_expression(&table_join_condition.condition);
 
     V::Result::output()
 }
