@@ -264,7 +264,10 @@ impl<'a> Parser<'a> {
                 TokenKind::Declare => return self.parse_declare_statement(),
                 TokenKind::Set => return self.parse_set_local_variable_statement(),
                 TokenKind::Exec | TokenKind::Execute => return self.parse_execute_statement(),
-                _ => return parse_error(ParseErrorType::ExpectedKeyword),
+                _ => {
+                    self.advance();
+                    return parse_error(ParseErrorType::ExpectedKeyword);
+                }
             },
             None => todo!(),
         }
