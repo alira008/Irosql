@@ -190,6 +190,7 @@ impl VisitorResult for () {
     }
 }
 
+#[macro_export]
 macro_rules! walk_list {
     ($visitor: expr, $method: ident, $list: expr) => {
         for element in $list.iter() {
@@ -198,6 +199,7 @@ macro_rules! walk_list {
     };
 }
 
+#[macro_export]
 macro_rules! walk_opt_list {
     ($visitor: expr, $method: ident, $opt: expr) => {
         if let Some(o) = $opt {
@@ -208,6 +210,7 @@ macro_rules! walk_opt_list {
     };
 }
 
+#[macro_export]
 macro_rules! walk_opt {
     ($visitor: expr, $method: ident, $opt: expr) => {
         if let Some(o) = $opt {
