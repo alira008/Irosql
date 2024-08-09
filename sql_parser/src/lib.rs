@@ -355,8 +355,7 @@ impl<'a> Parser<'a> {
         let local_variable =
             ast::Expression::try_from(self.expect_token(&TokenKind::LocalVariable(""))?)?;
         let _ = self.expect_token(&TokenKind::Equal)?;
-        let value = ast::Expression::try_from(self.peek_token)?;
-        self.advance();
+        let value = self.parse_expression(Precedence::Lowest)?;
         let _ = self.expect_token(&TokenKind::SemiColon)?;
 
         Ok(ast::Statement::SetLocalVariable {
@@ -372,7 +371,9 @@ impl<'a> Parser<'a> {
         let mut variables = vec![];
         loop {
             let local_variable = self.expect_token(&TokenKind::LocalVariable(""))?;
+            dbg!(self.peek_token);
             let data_type = self.parse_data_type()?;
+            dbg!(self.peek_token);
             let value = if self.token_is(&TokenKind::Equal) {
                 self.advance();
                 Some(self.parse_expression(Precedence::Lowest)?)
@@ -1264,7 +1265,9 @@ impl<'a> Parser<'a> {
             ast::DataType::Numeric(keyword, numeric_size)
         } else if self.token_is(&TokenKind::Varchar) {
             let keyword = Keyword::try_from(self.peek_token)?;
+            dbg!(self.peek_token);
             self.advance();
+            dbg!(self.peek_token);
             let float_precision = self.parse_float_precision()?;
             ast::DataType::Varchar(keyword, float_precision)
         } else {
@@ -1277,6 +1280,7 @@ impl<'a> Parser<'a> {
     fn parse_float_precision(&mut self) -> Result<Option<u32>, ParseError<'a>> {
         if self.token_is(&TokenKind::LeftParen) {
             let _ = self.expect_token(&TokenKind::LeftParen)?;
+            dbg!(self.peek_token);
             let numeric_literal = match self.peek_token {
                 Some(token) => ast::Expression::try_from(token)?,
                 _ => unreachable!(),
@@ -1288,6 +1292,8 @@ impl<'a> Parser<'a> {
                 },
                 _ => return parse_error(ParseErrorType::ExpectedFloatPrecision),
             };
+            self.advance();
+            dbg!(self.peek_token);
             let _ = self.expect_token(&TokenKind::RightParen)?;
             Ok(Some(size))
         } else {

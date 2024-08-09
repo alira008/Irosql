@@ -1,5 +1,5 @@
 use sql_parser::{
-    ast::{Expression, SelectItem, TableSource},
+    ast::{DataType, Expression, SelectItem, TableSource},
     visitor::Visitor,
 };
 
@@ -187,6 +187,44 @@ impl Visitor for Formatter {
                 self.print_new_line();
             }
             self.visit_statement(s);
+        }
+    }
+
+    fn visit_data_type_numeric_size(&mut self, ns: &sql_parser::ast::NumericSize) -> Self::Result {
+        self.formatted_query += ns.precision.to_string().as_str();
+        if let Some(n) = ns.scale {
+            self.formatted_query += ", ";
+            self.formatted_query += n.to_string().as_str();
+        }
+    }
+
+    fn visit_data_type(&mut self, data_type: &sql_parser::ast::DataType) -> Self::Result {
+        match data_type {
+            DataType::Int(k)
+            | DataType::BigInt(k)
+            | DataType::TinyInt(k)
+            | DataType::SmallInt(k)
+            | DataType::Datetime(k)
+            | DataType::Time(k)
+            | DataType::Real(k)
+            | DataType::Date(k)
+            | DataType::Bit(k) => self.visit_keyword(&k),
+            DataType::Decimal(k, ns) | DataType::Numeric(k, ns) => {
+                self.visit_keyword(&k);
+                if let Some(ns) = ns {
+                    self.formatted_query += "(";
+                    self.visit_data_type_numeric_size(ns);
+                    self.formatted_query += ")";
+                }
+            }
+            DataType::Float(k, n) | DataType::Varchar(k, n) => {
+                self.visit_keyword(&k);
+                if let Some(n) = n {
+                    self.formatted_query += "(";
+                    self.formatted_query += n.to_string().as_str();
+                    self.formatted_query += ")";
+                }
+            }
         }
     }
 
