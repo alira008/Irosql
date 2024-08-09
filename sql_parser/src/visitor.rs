@@ -1,74 +1,167 @@
 use sql_lexer::Span;
 
 use crate::ast::{
-    ArithmeticOperator, ArithmeticOperatorKind, CaseCondition, CommonTableExpression, CommonTableExpressionStatement, ComparisonOperator, ComparisonOperatorKind, DataType, Expression, FetchArg, FunctionName, GroupByClause, HavingClause, InsertStatement, Join, JoinType, Keyword, KeywordKind, Literal, LocalVariable, NextOrFirst, NumericSize, OffsetArg, OffsetFetchClause, OrderByArg, OrderByClause, OverClause, ProcedureParameter, ProcedureParameterName, Query, RowOrRows, RowsOrRange, SelectItem, SelectStatement, Statement, TableArg, TableSource, Top, UnaryOperator, UnaryOperatorKind, WhereClause, WindowFrame, WindowFrameBound
+    ArithmeticOperator, ArithmeticOperatorKind, CaseCondition, CommonTableExpression,
+    CommonTableExpressionStatement, ComparisonOperator, ComparisonOperatorKind, DataType,
+    Expression, FetchArg, FunctionName, GroupByClause, HavingClause, InsertStatement, Join,
+    JoinType, Keyword, KeywordKind, Literal, LocalVariable, NextOrFirst, NumericSize, OffsetArg,
+    OffsetFetchClause, OrderByArg, OrderByClause, OverClause, ProcedureParameter,
+    ProcedureParameterName, Query, RowOrRows, RowsOrRange, SelectItem, SelectStatement, Statement,
+    TableArg, TableSource, Top, UnaryOperator, UnaryOperatorKind, WhereClause, WindowFrame,
+    WindowFrameBound,
 };
 
-pub trait Visitor {
+pub trait Visitor: Sized {
     type Result: VisitorResult;
 
-    fn visit_query(&mut self, query: &Query) -> Self::Result {Self::Result::output()}
-    fn visit_expression(&mut self, expr: &Expression) -> Self::Result {Self::Result::output()}
-    fn visit_statement(&mut self, stmt: &Statement) -> Self::Result {Self::Result::output()}
-    fn visit_insert_statement(&mut self, stmt: &InsertStatement) -> Self::Result {Self::Result::output()}
-    fn visit_select_statement(&mut self, stmt: &SelectStatement) -> Self::Result {Self::Result::output()}
+    fn visit_query(&mut self, query: &Query) -> Self::Result {
+        walk_query(self, query)
+    }
+    fn visit_expression(&mut self, expr: &Expression) -> Self::Result {
+        walk_expression(self, expr)
+    }
+    fn visit_statement(&mut self, stmt: &Statement) -> Self::Result {
+        walk_statement(self, stmt)
+    }
+    fn visit_insert_statement(&mut self, stmt: &InsertStatement) -> Self::Result {
+        Self::Result::output()
+    }
+    fn visit_select_statement(&mut self, stmt: &SelectStatement) -> Self::Result {
+        Self::Result::output()
+    }
     fn visit_common_table_expression_statement(
         &mut self,
         stmt: &CommonTableExpressionStatement,
-    ) -> Self::Result {Self::Result::output()}
+    ) -> Self::Result {
+        Self::Result::output()
+    }
 
-    fn visit_literal(&mut self, literal: &Literal) -> Self::Result {Self::Result::output()}
-    fn visit_comparison_operator(&mut self, op: &ComparisonOperator) -> Self::Result {Self::Result::output()}
-    fn visit_comparison_operator_kind(&mut self, op: &ComparisonOperatorKind) -> Self::Result {Self::Result::output()}
-    fn visit_arithmetic_operator(&mut self, op: &ArithmeticOperator) -> Self::Result {Self::Result::output()}
-    fn visit_arithmetic_operator_kind(&mut self, op: &ArithmeticOperatorKind) -> Self::Result {Self::Result::output()}
-    fn visit_unary_operator(&mut self, op: &UnaryOperator) -> Self::Result {Self::Result::output()}
-    fn visit_unary_operator_kind(&mut self, op: &UnaryOperatorKind) -> Self::Result {Self::Result::output()}
-    fn visit_keyword(&mut self, keyword: &Keyword) -> Self::Result {Self::Result::output()}
-    fn visit_keyword_kind(&mut self, keyword_kind: KeywordKind) -> Self::Result {Self::Result::output()}
-    fn visit_data_type(&mut self, data_type: &DataType) -> Self::Result {Self::Result::output()}
-    fn visit_data_type_numeric_size(&mut self, numeric_size: &NumericSize) -> Self::Result {Self::Result::output()}
-    fn visit_top_clause(&mut self, top_clause: &Top) -> Self::Result {Self::Result::output()}
-    fn visit_select_item(&mut self, select_item: &SelectItem) -> Self::Result {Self::Result::output()}
-    fn visit_table_clause(&mut self, table_clause: &TableArg) -> Self::Result {Self::Result::output()}
-    fn visit_where_clause(&mut self, where_clause: &WhereClause) -> Self::Result {Self::Result::output()}
-    fn visit_group_by_clause(&mut self, group_by_clause: &GroupByClause) -> Self::Result {Self::Result::output()}
-    fn visit_having_clause(&mut self, having_clause: &HavingClause) -> Self::Result {Self::Result::output()}
-    fn visit_order_by_clause(&mut self, order_by_clause: &OrderByClause) -> Self::Result {Self::Result::output()}
-    fn visit_table_source(&mut self, table_source: &TableSource) -> Self::Result {Self::Result::output()}
-    fn visit_table_join(&mut self, table_join: &Join) -> Self::Result {Self::Result::output()}
-    fn visit_table_join_type(&mut self, table_join_type: &JoinType) -> Self::Result {Self::Result::output()}
-    fn visit_order_by_arg(&mut self, order_by_arg: &OrderByArg) -> Self::Result {Self::Result::output()}
+    fn visit_literal(&mut self, literal: &Literal) -> Self::Result {
+        Self::Result::output()
+    }
+    fn visit_comparison_operator(&mut self, op: &ComparisonOperator) -> Self::Result {
+        Self::Result::output()
+    }
+    fn visit_comparison_operator_kind(&mut self, op: &ComparisonOperatorKind) -> Self::Result {
+        Self::Result::output()
+    }
+    fn visit_arithmetic_operator(&mut self, op: &ArithmeticOperator) -> Self::Result {
+        Self::Result::output()
+    }
+    fn visit_arithmetic_operator_kind(&mut self, op: &ArithmeticOperatorKind) -> Self::Result {
+        Self::Result::output()
+    }
+    fn visit_unary_operator(&mut self, op: &UnaryOperator) -> Self::Result {
+        Self::Result::output()
+    }
+    fn visit_unary_operator_kind(&mut self, op: &UnaryOperatorKind) -> Self::Result {
+        Self::Result::output()
+    }
+    fn visit_keyword(&mut self, keyword: &Keyword) -> Self::Result {
+        Self::Result::output()
+    }
+    fn visit_keyword_kind(&mut self, keyword_kind: KeywordKind) -> Self::Result {
+        Self::Result::output()
+    }
+    fn visit_data_type(&mut self, data_type: &DataType) -> Self::Result {
+        Self::Result::output()
+    }
+    fn visit_data_type_numeric_size(&mut self, numeric_size: &NumericSize) -> Self::Result {
+        Self::Result::output()
+    }
+    fn visit_top_clause(&mut self, top_clause: &Top) -> Self::Result {
+        Self::Result::output()
+    }
+    fn visit_select_item(&mut self, select_item: &SelectItem) -> Self::Result {
+        Self::Result::output()
+    }
+    fn visit_table_clause(&mut self, table_clause: &TableArg) -> Self::Result {
+        Self::Result::output()
+    }
+    fn visit_where_clause(&mut self, where_clause: &WhereClause) -> Self::Result {
+        Self::Result::output()
+    }
+    fn visit_group_by_clause(&mut self, group_by_clause: &GroupByClause) -> Self::Result {
+        Self::Result::output()
+    }
+    fn visit_having_clause(&mut self, having_clause: &HavingClause) -> Self::Result {
+        Self::Result::output()
+    }
+    fn visit_order_by_clause(&mut self, order_by_clause: &OrderByClause) -> Self::Result {
+        Self::Result::output()
+    }
+    fn visit_table_source(&mut self, table_source: &TableSource) -> Self::Result {
+        Self::Result::output()
+    }
+    fn visit_table_join(&mut self, table_join: &Join) -> Self::Result {
+        Self::Result::output()
+    }
+    fn visit_table_join_type(&mut self, table_join_type: &JoinType) -> Self::Result {
+        Self::Result::output()
+    }
+    fn visit_order_by_arg(&mut self, order_by_arg: &OrderByArg) -> Self::Result {
+        Self::Result::output()
+    }
     fn visit_order_by_offset_fetch_clause(
         &mut self,
         offset_fetch_clause: &OffsetFetchClause,
-    ) -> Self::Result {Self::Result::output()}
-    fn visit_order_by_offset_arg(&mut self, offset_arg: &OffsetArg) -> Self::Result {Self::Result::output()}
-    fn visit_order_by_fetch_arg(&mut self, fetch_arg: &FetchArg) -> Self::Result {Self::Result::output()}
-    fn visit_row_or_rows(&mut self, row_or_rows: RowOrRows) -> Self::Result {Self::Result::output()}
-    fn visit_rows_or_range(&mut self, rows_or_range: RowsOrRange) -> Self::Result {Self::Result::output()}
-    fn visit_first_or_next(&mut self, first_or_next: NextOrFirst) -> Self::Result {Self::Result::output()}
-    fn visit_function_name(&mut self, fn_name: &FunctionName) -> Self::Result {Self::Result::output()}
-    fn visit_function_over_clause(&mut self, over_clause: &OverClause) -> Self::Result {Self::Result::output()}
+    ) -> Self::Result {
+        Self::Result::output()
+    }
+    fn visit_order_by_offset_arg(&mut self, offset_arg: &OffsetArg) -> Self::Result {
+        Self::Result::output()
+    }
+    fn visit_order_by_fetch_arg(&mut self, fetch_arg: &FetchArg) -> Self::Result {
+        Self::Result::output()
+    }
+    fn visit_row_or_rows(&mut self, row_or_rows: RowOrRows) -> Self::Result {
+        Self::Result::output()
+    }
+    fn visit_rows_or_range(&mut self, rows_or_range: RowsOrRange) -> Self::Result {
+        Self::Result::output()
+    }
+    fn visit_first_or_next(&mut self, first_or_next: NextOrFirst) -> Self::Result {
+        Self::Result::output()
+    }
+    fn visit_function_name(&mut self, fn_name: &FunctionName) -> Self::Result {
+        Self::Result::output()
+    }
+    fn visit_function_over_clause(&mut self, over_clause: &OverClause) -> Self::Result {
+        Self::Result::output()
+    }
     fn visit_function_over_clause_window_frame(
         &mut self,
         window_frame: &WindowFrame,
-    ) -> Self::Result {Self::Result::output()}
+    ) -> Self::Result {
+        Self::Result::output()
+    }
     fn visit_function_over_clause_window_frame_bound(
         &mut self,
         window_frame_bound: &WindowFrameBound,
-    ) -> Self::Result {Self::Result::output()}
-    fn visit_case_condition(&mut self, case_condition: &CaseCondition) -> Self::Result {Self::Result::output()}
-    fn visit_common_table_expression(&mut self, cte: &CommonTableExpression) -> Self::Result {Self::Result::output()}
+    ) -> Self::Result {
+        Self::Result::output()
+    }
+    fn visit_case_condition(&mut self, case_condition: &CaseCondition) -> Self::Result {
+        Self::Result::output()
+    }
+    fn visit_common_table_expression(&mut self, cte: &CommonTableExpression) -> Self::Result {
+        Self::Result::output()
+    }
     fn visit_execute_statement_procedure_parameter(
         &mut self,
         param: &ProcedureParameter,
-    ) -> Self::Result {Self::Result::output()}
+    ) -> Self::Result {
+        Self::Result::output()
+    }
     fn visit_execute_statement_procedure_parameter_name(
         &mut self,
         name: &ProcedureParameterName,
-    ) -> Self::Result {Self::Result::output()}
-    fn visit_local_variable(&mut self, local_variable: &LocalVariable) -> Self::Result {Self::Result::output()}
+    ) -> Self::Result {
+        Self::Result::output()
+    }
+    fn visit_local_variable(&mut self, local_variable: &LocalVariable) -> Self::Result {
+        Self::Result::output()
+    }
 }
 
 pub trait VisitorResult {
@@ -114,13 +207,11 @@ impl VisitorResult for String {
 }
 
 pub fn walk_query<V: Visitor>(visitor: &mut V, query: &Query) -> V::Result {
-    visitor.visit_query(query);
     walk_list!(visitor, walk_statement, query.statements);
     V::Result::output()
 }
 
 pub fn walk_expression<V: Visitor>(visitor: &mut V, expression: &Expression) -> V::Result {
-    visitor.visit_expression(&expression);
     match expression {
         Expression::Asterisk => V::Result::output(),
         Expression::Identifier(l)
@@ -306,33 +397,51 @@ pub fn walk_expression<V: Visitor>(visitor: &mut V, expression: &Expression) -> 
 }
 
 pub fn walk_statement<V: Visitor>(visitor: &mut V, stmt: &Statement) -> V::Result {
-    visitor.visit_statement(stmt);
     match stmt {
         Statement::Select(s) => walk_select_statement(visitor, s),
         Statement::Insert(i) => walk_insert_statement(visitor, i),
         Statement::Update(_) => V::Result::output(),
         Statement::Delete(_) => V::Result::output(),
-        Statement::CTE { with_kw, ctes, statement } => {
+        Statement::CTE {
+            with_kw,
+            ctes,
+            statement,
+        } => {
             walk_keyword(visitor, with_kw);
             walk_list!(visitor, walk_common_table_expression, ctes);
             walk_common_table_expression_statement(visitor, statement)
-        },
-        Statement::Declare { declare_kw, variables } => {
+        }
+        Statement::Declare {
+            declare_kw,
+            variables,
+        } => {
             walk_keyword(visitor, declare_kw);
             walk_list!(visitor, walk_local_variable, variables);
             V::Result::output()
-        },
-        Statement::SetLocalVariable { set_kw, name, value } => {
+        }
+        Statement::SetLocalVariable {
+            set_kw,
+            name,
+            value,
+        } => {
             walk_keyword(visitor, set_kw);
             walk_expression(visitor, name);
             walk_expression(visitor, value)
-        },
-        Statement::Execute { exec_kw, procedure_name, parameters } => {
+        }
+        Statement::Execute {
+            exec_kw,
+            procedure_name,
+            parameters,
+        } => {
             walk_keyword(visitor, exec_kw);
             walk_expression(visitor, procedure_name);
-            walk_list!(visitor, walk_execute_statement_procedure_parameter, parameters);
+            walk_list!(
+                visitor,
+                walk_execute_statement_procedure_parameter,
+                parameters
+            );
             V::Result::output()
-        },
+        }
     }
 }
 
@@ -507,7 +616,10 @@ pub fn walk_where_clause<V: Visitor>(visitor: &mut V, where_clause: &WhereClause
     walk_expression(visitor, &where_clause.expression)
 }
 
-pub fn walk_group_by_clause<V: Visitor>(visitor: &mut V, group_by_clause: &GroupByClause) -> V::Result {
+pub fn walk_group_by_clause<V: Visitor>(
+    visitor: &mut V,
+    group_by_clause: &GroupByClause,
+) -> V::Result {
     visitor.visit_group_by_clause(group_by_clause);
     walk_list!(visitor, walk_keyword, &group_by_clause.group_by_kws);
     walk_list!(visitor, walk_expression, &group_by_clause.expressions);

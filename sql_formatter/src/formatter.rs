@@ -24,7 +24,7 @@ impl Formatter {
         let query = parser.parse();
 
         // walk the ast
-        walk_query(self, &query);
+        self.visit_query(&query);
 
         Ok(())
     }
