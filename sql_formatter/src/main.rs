@@ -1,8 +1,8 @@
 use clap::Parser;
 use settings::{IndentCommaLists, KeywordCase};
 
-mod formatter;
-mod settings;
+pub mod formatter;
+pub mod settings;
 
 #[derive(Parser)]
 #[command(name = "sql_formatter", version = "0.1.0", author = "Ariel")]
