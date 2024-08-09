@@ -238,7 +238,13 @@ impl ComparisonOperator {
 
 impl fmt::Display for ComparisonOperator {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match self.kind {
+        write!(f, "{}", self.kind)
+    }
+}
+
+impl fmt::Display for ComparisonOperatorKind {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
             ComparisonOperatorKind::Equal => f.write_str("="),
             ComparisonOperatorKind::NotEqualBang => f.write_str("!="),
             ComparisonOperatorKind::NotEqualArrow => f.write_str("<>"),
@@ -288,7 +294,13 @@ impl ArithmeticOperator {
 
 impl fmt::Display for ArithmeticOperator {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match self.kind {
+        write!(f, "{}", self.kind)
+    }
+}
+
+impl fmt::Display for ArithmeticOperatorKind {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
             ArithmeticOperatorKind::Plus => f.write_str("+"),
             ArithmeticOperatorKind::Minus => f.write_str("-"),
             ArithmeticOperatorKind::Multiply => f.write_str("*"),
@@ -334,7 +346,13 @@ impl UnaryOperator {
 
 impl fmt::Display for UnaryOperator {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match self.kind {
+        write!(f, "{}", self.kind)
+    }
+}
+
+impl fmt::Display for UnaryOperatorKind {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
             UnaryOperatorKind::Plus => f.write_str("+"),
             UnaryOperatorKind::Minus => f.write_str("-"),
         }
