@@ -241,7 +241,6 @@ impl<'a> Parser<'a> {
                 Ok(statement) => query.statements.push(statement),
                 Err(parse_error) => self.parse_errors.push(parse_error),
             }
-            self.advance();
         }
 
         query
