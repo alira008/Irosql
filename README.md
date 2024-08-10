@@ -104,5 +104,6 @@ Options:
 - [x] CTEs
 - [x] Insert Queries
 - [ ] Bulk Insert Queries
-- [x] Delete Queries
-- [x] Update Queries
+- [ ] Delete Queries
+- [ ] Update Queries
+- [ ] Unions
