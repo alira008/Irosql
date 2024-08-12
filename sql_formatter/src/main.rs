@@ -1,6 +1,7 @@
 use clap::Parser;
 use settings::{IndentCommaLists, KeywordCase};
 
+pub mod comments;
 pub mod formatter;
 pub mod settings;
 

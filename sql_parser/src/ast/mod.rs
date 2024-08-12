@@ -11,6 +11,12 @@ pub use keyword::{Keyword, KeywordKind};
 use sql_lexer::{Span, Token, TokenKind};
 pub use utils::*;
 
+#[derive(Debug, PartialEq, Eq, Clone, Hash)]
+pub struct Comment {
+    pub content: String,
+    pub span: Span
+}
+
 #[derive(Debug, PartialEq, Clone)]
 pub struct CommonTableExpression {
     pub name: Expression,

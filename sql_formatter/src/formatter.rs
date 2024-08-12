@@ -1,5 +1,9 @@
+use std::collections::HashMap;
+
+use crate::comments::CommentMapper;
+use sql_lexer::Span;
 use sql_parser::{
-    ast::{DataType, Expression, SelectItem, TableSource},
+    ast::{Comment, DataType, Expression, SelectItem, TableSource},
     visitor::Visitor,
 };
 
@@ -9,6 +13,8 @@ pub struct Formatter {
     settings: FormatterSettings,
     indent_level: u32,
     formatted_query: String,
+    comment_map_before_line: Vec<(Span, Comment)>,
+    comment_map_same_line: Vec<(Span, Comment)>,
 }
 
 impl Formatter {
@@ -18,6 +24,8 @@ impl Formatter {
             settings,
             indent_level: 0,
             formatted_query,
+            comment_map_before_line: vec![],
+            comment_map_same_line: vec![],
         }
     }
 
@@ -26,6 +34,10 @@ impl Formatter {
         let mut parser = sql_parser::Parser::new(lexer);
         let query = parser.parse();
 
+        let mut comment_mapper = CommentMapper::new(input, parser.comments());
+        comment_mapper.map(&query);
+        self.comment_map_before_line = comment_mapper.comment_map_before_line;
+        self.comment_map_same_line = comment_mapper.comment_map_same_line;
         // walk the ast
         self.visit_query(&query);
 
@@ -65,6 +77,15 @@ impl Formatter {
     fn print_new_line(&mut self) {
         self.formatted_query.push_str("\n");
         self.print_indent();
+    }
+
+    fn get_new_line_str(&self) -> String {
+        let mut str = String::from("\n");
+        let indent_string = if self.settings.use_tab { "\t" } else { " " }
+            .repeat(self.settings.indent_width as usize)
+            .repeat(self.indent_level as usize);
+        str.push_str(&indent_string);
+        str
     }
 
     fn print_select_column_comma(&mut self) {
@@ -110,6 +131,32 @@ impl Formatter {
         }
         self.formatted_query.push_str(&')'.to_string());
     }
+
+    fn print_comments_before(&mut self, location: Span) {
+        let mut comment_present = false;
+        for (_, comment) in self
+            .comment_map_before_line
+            .iter()
+            .filter(|(s, _)| *s == location)
+        {
+            self.formatted_query += self.get_new_line_str().as_str();
+            self.formatted_query += "-- ";
+            self.formatted_query += &comment.content;
+            comment_present = true;
+        }
+        if comment_present {
+            self.formatted_query += self.get_new_line_str().as_str();
+        }
+    }
+
+    fn print_comments_same_line(&mut self, location: Span) {
+        for (span, comment) in self.comment_map_same_line.iter() {
+            if *span == location {
+                self.formatted_query += " -- ";
+                self.formatted_query += &comment.content;
+            }
+        }
+    }
 }
 
 macro_rules! walk_opt_two {
@@ -144,6 +191,12 @@ impl Visitor for Formatter {
 
     fn visit_keyword_kind(&mut self, kind: sql_parser::ast::KeywordKind) -> Self::Result {
         self.print_keyword(kind.to_string().as_str())
+    }
+
+    fn visit_keyword(&mut self, keyword: &sql_parser::ast::Keyword) -> Self::Result {
+        self.print_comments_before(keyword.location);
+        self.visit_keyword_kind(keyword.kind);
+        self.print_comments_same_line(keyword.location);
     }
 
     fn visit_literal(&mut self, literal: &sql_parser::ast::Literal) -> Self::Result {
@@ -391,7 +444,17 @@ impl Visitor for Formatter {
         }
         for (i, select_item) in stmt.columns.iter().enumerate() {
             if i > 0 {
+                // if self.formatted_query.pop().is_some_and(|c| c == '\n') {
+                //
+                // }
+                // if self
+                //     .formatted_query
+                //     .lines()
+                //     .last()
+                //     .is_some_and(|l| !l.trim().is_empty())
+                // {
                 self.print_select_column_comma();
+                // }
             }
             self.visit_select_item(select_item);
         }
@@ -461,24 +524,34 @@ impl Visitor for Formatter {
         match expr {
             Expression::Asterisk => self.visit_asterisk(),
             Expression::Identifier(l) => {
+                self.print_comments_before(l.location);
                 self.visit_literal(l);
+                self.print_comments_same_line(l.location);
             }
             Expression::QuotedIdentifier(l) => {
+                self.print_comments_before(l.location);
                 self.formatted_query += "[";
                 self.visit_literal(l);
                 self.formatted_query += "]";
+                self.print_comments_same_line(l.location);
             }
             Expression::StringLiteral(l) => {
+                self.print_comments_before(l.location);
                 self.formatted_query += "'";
                 self.visit_literal(l);
                 self.formatted_query += "'";
+                self.print_comments_same_line(l.location);
             }
             Expression::NumberLiteral(l) => {
+                self.print_comments_before(l.location);
                 self.visit_literal(l);
+                self.print_comments_same_line(l.location);
             }
             Expression::LocalVariable(l) => {
+                self.print_comments_before(l.location);
                 self.formatted_query += "@";
                 self.visit_literal(l);
+                self.print_comments_same_line(l.location);
             }
             Expression::Keyword(k) => self.visit_keyword(&k),
             Expression::Compound(e) => {

@@ -11,6 +11,7 @@ use crate::expr_start::{
     ORDER_BY_ARGS_START, PARTITION_BY_START, SELECT_ITEM_TYPE_START, TABLE_SOURCE_START,
 };
 use crate::operator::{get_precedence, Precedence};
+use ast::Comment;
 use sql_lexer::{Lexer, LexicalError, Token, TokenKind};
 
 #[derive(Debug, Clone)]
@@ -18,6 +19,7 @@ pub struct Parser<'a> {
     lexer: Lexer<'a>,
     peek_token: Option<Token<'a>>,
 
+    comments: Vec<Comment>,
     lexer_errors: Vec<LexicalError>,
     parse_errors: Vec<ParseError<'a>>,
 }
@@ -27,6 +29,7 @@ impl<'a> Parser<'a> {
         let mut parser = Parser {
             lexer,
             peek_token: None,
+            comments: vec![],
             lexer_errors: vec![],
             parse_errors: vec![],
         };
@@ -46,7 +49,12 @@ impl<'a> Parser<'a> {
             match self.lexer.next() {
                 Some(r) => match r {
                     Ok(token) => match token.kind_as_ref() {
-                        TokenKind::Comment(_) => todo!(),
+                        TokenKind::Comment(s) => {
+                            self.comments.push(Comment {
+                                content: s.to_string(),
+                                span: token.location(),
+                            });
+                        }
                         _ => {
                             next_tok = Some(token);
                             break;
@@ -244,6 +252,10 @@ impl<'a> Parser<'a> {
         }
 
         query
+    }
+
+    pub fn comments(&self) -> &[Comment]{
+        &self.comments
     }
 
     fn parse_statement(&mut self) -> Result<ast::Statement, ParseError<'a>> {
