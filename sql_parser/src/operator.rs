@@ -1,6 +1,7 @@
 use sql_lexer::TokenKind;
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord)]
+#[allow(dead_code)]
 pub enum Precedence {
     Lowest,
     Assignment,
