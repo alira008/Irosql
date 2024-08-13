@@ -38,6 +38,10 @@ impl Formatter {
         self.comment_map_same_line = comment_mapper.comment_map_same_line;
         // walk the ast
         self.visit_query(&query);
+        let last_char = self.formatted_query.pop();
+        if last_char.is_some_and(|ch| ch != '\n') {
+            self.formatted_query.push(last_char.unwrap());
+        }
 
         Ok(())
     }
@@ -73,8 +77,15 @@ impl Formatter {
     }
 
     fn print_new_line(&mut self) {
-        self.formatted_query.push_str("\n");
-        self.print_indent();
+        if self
+            .formatted_query
+            .lines()
+            .last()
+            .is_some_and(|l| !l.trim().is_empty())
+        {
+            self.formatted_query.push_str("\n");
+            self.print_indent();
+        }
     }
 
     fn get_new_line_str(&self) -> String {
@@ -172,6 +183,7 @@ impl Formatter {
             if *span == location {
                 self.formatted_query += " -- ";
                 self.formatted_query += &comment.content;
+                self.formatted_query += self.get_new_line_str().as_str();
             }
         }
     }
@@ -264,7 +276,10 @@ impl Visitor for Formatter {
         self.visit_symbol(&ns.right_paren);
     }
 
-    fn visit_data_type_size(&mut self, data_type_size: &sql_parser::ast::DataTypeSize) -> Self::Result {
+    fn visit_data_type_size(
+        &mut self,
+        data_type_size: &sql_parser::ast::DataTypeSize,
+    ) -> Self::Result {
         self.visit_symbol(&data_type_size.left_paren);
         self.formatted_query += data_type_size.size.to_string().as_str();
         self.visit_symbol(&data_type_size.right_paren);
@@ -343,7 +358,7 @@ impl Visitor for Formatter {
                 name,
                 equal_sign,
                 value,
-                semicolon
+                semicolon,
             } => {
                 self.visit_keyword(set_kw);
                 self.print_space();
@@ -454,10 +469,10 @@ impl Visitor for Formatter {
         walk_opt_two!(self, visit_keyword, &stmt.distinct, self.print_space());
         walk_opt_two!(self, visit_keyword, &stmt.all, self.print_space());
         walk_opt_two!(self, visit_top_clause, &stmt.top, self.print_space());
-        self.increase_indent();
         if stmt.columns.len() == 1 {
             self.print_space();
         } else {
+            self.increase_indent();
             self.print_new_line();
         }
         for (i, select_item) in stmt.columns.iter().enumerate() {
@@ -466,7 +481,9 @@ impl Visitor for Formatter {
             }
             self.visit_select_item(select_item);
         }
-        self.decrease_indent();
+        if stmt.columns.len() > 1 {
+            self.decrease_indent();
+        }
         walk_opt_two!(self, visit_table_clause, &stmt.table, self.print_new_line());
         walk_opt_two!(
             self,
