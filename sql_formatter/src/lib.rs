@@ -1,3 +1,4 @@
 pub mod formatter;
-pub mod comments;
+mod comments;
 pub mod settings;
+
