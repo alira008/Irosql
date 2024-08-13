@@ -1,5 +1,3 @@
-use std::collections::HashMap;
-
 use crate::comments::CommentMapper;
 use sql_lexer::Span;
 use sql_parser::{
@@ -134,18 +132,33 @@ impl Formatter {
 
     fn print_comments_before(&mut self, location: Span) {
         let mut comment_present = false;
+        let comma_char = if self.formatted_query.chars().last().is_some_and(|ch| ch== ','){
+            self.formatted_query.pop()
+        }else {
+            None
+        };
         for (_, comment) in self
             .comment_map_before_line
             .iter()
             .filter(|(s, _)| *s == location)
         {
-            self.formatted_query += self.get_new_line_str().as_str();
+            if self
+                .formatted_query
+                .lines()
+                .last()
+                .is_some_and(|l| !l.trim().is_empty())
+            {
+                self.formatted_query += self.get_new_line_str().as_str();
+            }
             self.formatted_query += "-- ";
             self.formatted_query += &comment.content;
             comment_present = true;
         }
         if comment_present {
             self.formatted_query += self.get_new_line_str().as_str();
+        }
+        if let Some(comma_char) = comma_char {
+            self.formatted_query.push(comma_char);
         }
     }
 
@@ -157,15 +170,6 @@ impl Formatter {
             }
         }
     }
-}
-
-macro_rules! walk_opt_two {
-    ($visitor: expr, $method: ident, $opt: expr, $before_visit: stmt) => {
-        if let Some(o) = $opt {
-            $before_visit
-            $visitor.$method(o);
-        }
-    };
 }
 
 macro_rules! walk_list_two {
@@ -444,17 +448,7 @@ impl Visitor for Formatter {
         }
         for (i, select_item) in stmt.columns.iter().enumerate() {
             if i > 0 {
-                // if self.formatted_query.pop().is_some_and(|c| c == '\n') {
-                //
-                // }
-                // if self
-                //     .formatted_query
-                //     .lines()
-                //     .last()
-                //     .is_some_and(|l| !l.trim().is_empty())
-                // {
                 self.print_select_column_comma();
-                // }
             }
             self.visit_select_item(select_item);
         }
