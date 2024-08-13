@@ -13,6 +13,7 @@ use crate::expr_start::{
 use crate::operator::{get_precedence, Precedence};
 use ast::Comment;
 use sql_lexer::{Lexer, LexicalError, Token, TokenKind};
+use tracing::debug;
 
 #[derive(Debug, Clone)]
 pub struct Parser<'a> {
@@ -288,10 +289,8 @@ impl<'a> Parser<'a> {
     fn parse_insert_statement(&mut self) -> Result<ast::Statement, ParseError<'a>> {
         let insert_kw = self.consume_keyword(TokenKind::Insert)?;
         let into_kw = self.maybe_keyword(TokenKind::Into);
-        dbg!(self.peek_token);
         let object = self.parse_object_table_name()?;
 
-        dbg!(self.peek_token);
         if self.token_is(&TokenKind::Select) {
             let select_kw = self.consume_keyword(TokenKind::Select)?;
             let top = if let Some(kw) = self.maybe_keyword(TokenKind::Top) {
@@ -328,7 +327,6 @@ impl<'a> Parser<'a> {
             } else {
                 None
             };
-            dbg!(&columns);
             let values_kw = self.consume_keyword(TokenKind::Values)?;
             let _ = self.expect_token(&TokenKind::LeftParen)?;
             let values = self.parse_expression_list()?;
@@ -383,9 +381,7 @@ impl<'a> Parser<'a> {
         let mut variables = vec![];
         loop {
             let local_variable = self.expect_token(&TokenKind::LocalVariable(""))?;
-            dbg!(self.peek_token);
             let data_type = self.parse_data_type()?;
-            dbg!(self.peek_token);
             let value = if self.token_is(&TokenKind::Equal) {
                 self.advance();
                 Some(self.parse_expression(Precedence::Lowest)?)
@@ -414,7 +410,6 @@ impl<'a> Parser<'a> {
     fn parse_cte_statement(&mut self) -> Result<ast::Statement, ParseError<'a>> {
         let with_kw = self.consume_keyword(TokenKind::With)?;
         let mut ctes = vec![];
-        dbg!(&with_kw);
         loop {
             let cte_name = ast::Expression::try_from(self.peek_token)?;
             self.advance();
@@ -460,9 +455,7 @@ impl<'a> Parser<'a> {
 
         // get the procedure name
         let procedure_name = ast::Expression::try_from(self.peek_token)?;
-        dbg!(self.peek_token);
         self.advance();
-        dbg!(self.peek_token);
         let parameters = self.parse_procedure_parameters()?;
 
         Ok(ast::Statement::Execute {
@@ -483,7 +476,6 @@ impl<'a> Parser<'a> {
                 self.advance();
                 if self.token_is(&TokenKind::Equal) {
                     self.advance();
-                    dbg!(self.peek_token);
                     let name = ast::ProcedureParameterName::try_from(tok)?;
                     Some(name)
                 } else {
@@ -492,9 +484,6 @@ impl<'a> Parser<'a> {
                         name: None,
                         value: expr,
                     });
-
-                    dbg!(self.peek_token);
-                    dbg!(self.peek_token);
 
                     if !self.token_is(&TokenKind::Comma) {
                         break;
@@ -529,7 +518,6 @@ impl<'a> Parser<'a> {
         if let Some(kw) = self.maybe_keyword(TokenKind::Top) {
             select_statement.top = Some(self.parse_top_clause(kw)?);
         }
-        dbg!(self.peek_token);
 
         select_statement.columns = self.parse_select_items()?;
 
@@ -566,9 +554,7 @@ impl<'a> Parser<'a> {
         // while self.token_is_any(&SELECT_ITEM_TYPE_START) {
         loop {
             self.expect_select_item_start()?;
-            dbg!(self.peek_token);
             let expression = self.parse_expression(Precedence::Lowest)?;
-            dbg!(&expression);
 
             // column_alias = expression
             if matches!(
@@ -623,7 +609,6 @@ impl<'a> Parser<'a> {
                     return parse_error(ParseErrorType::MissingAliasAfterAsKeyword);
                 }
             }
-            dbg!(self.peek_token);
 
             if !self.token_is(&TokenKind::Comma) {
                 break;
@@ -639,18 +624,15 @@ impl<'a> Parser<'a> {
     }
 
     fn parse_top_clause(&mut self, top_kw: Keyword) -> Result<ast::Top, ParseError<'a>> {
-        dbg!(self.peek_token);
         let top_expr = ast::Expression::try_from(self.peek_token)?;
         match top_expr {
             ast::Expression::NumberLiteral(_) => {}
             _ => return self.unexpected_token(vec!["numeric literal".to_string()]),
         }
 
-        dbg!(self.peek_token);
         self.advance();
         let percent_kw = self.maybe_keyword(TokenKind::Percent);
 
-        dbg!(self.peek_token);
         let with_ties_kw = if let Some(with_kw) = self.maybe_keyword(TokenKind::With) {
             let ties_kw = self.consume_keyword(TokenKind::Ties)?;
             Some(vec![with_kw, ties_kw])
@@ -847,7 +829,6 @@ impl<'a> Parser<'a> {
 
         if let Some(kw) = self.maybe_keyword(TokenKind::Over) {
             let over_clause = self.parse_function_over_clause(kw)?;
-            dbg!(&over_clause);
             return Ok(ast::Expression::Function {
                 name: Box::new(function_name),
                 args,
@@ -865,13 +846,11 @@ impl<'a> Parser<'a> {
     fn parse_function_args(&mut self) -> Result<Vec<ast::Expression>, ParseError<'a>> {
         let mut args = vec![];
 
-        dbg!(self.peek_token);
         loop {
             self.expect_function_args_start()?;
             let expr = self.parse_expression(Precedence::Lowest)?;
             args.push(expr);
 
-            dbg!(self.peek_token);
             if self.token_is(&TokenKind::RightParen) {
                 break;
             }
@@ -893,7 +872,6 @@ impl<'a> Parser<'a> {
             partition_by_kws = Some(vec![partition_kw, by_kw]);
         }
         let partition_by_clause = self.parse_function_partition_clause()?;
-        dbg!(&partition_by_clause);
 
         let mut order_by_kws = None;
         if let Some(order_kw) = self.maybe_keyword(TokenKind::Order) {
@@ -901,13 +879,11 @@ impl<'a> Parser<'a> {
             order_by_kws = Some(vec![order_kw, by_kw]);
         }
         let order_by_args = self.parse_order_by_args()?;
-        dbg!(&order_by_args);
 
         let mut window_frame_clause = None;
         if self.token_is_any(&[TokenKind::Rows, TokenKind::Range]) {
             window_frame_clause = Some(self.parse_function_window_frame_clause()?);
         }
-        dbg!(&window_frame_clause);
 
         let _ = self.expect_token(&TokenKind::RightParen)?;
 
@@ -1071,9 +1047,7 @@ impl<'a> Parser<'a> {
         let mut expressions: Vec<ast::Expression> = vec![];
         loop {
             self.expect_group_by_expression_start()?;
-            dbg!(self.peek_token);
             let expression = self.parse_expression(Precedence::Lowest)?;
-            dbg!(self.peek_token);
 
             expressions.push(expression);
             if !self.token_is(&TokenKind::Comma) {
@@ -1204,15 +1178,10 @@ impl<'a> Parser<'a> {
         let cast_kw = self.consume_keyword(TokenKind::Cast)?;
         let _ = self.expect_token(&TokenKind::LeftParen)?;
 
-        dbg!(&cast_kw);
         let expression = self.parse_expression(Precedence::Lowest)?;
-        dbg!(&expression);
 
         let as_kw = self.consume_keyword(TokenKind::As)?;
-        dbg!(&as_kw);
         let data_type = self.parse_data_type()?;
-        dbg!(&data_type);
-        dbg!(self.peek_token);
         let _ = self.expect_token(&TokenKind::RightParen)?;
 
         Ok(ast::Expression::Cast {
@@ -1277,9 +1246,7 @@ impl<'a> Parser<'a> {
             ast::DataType::Numeric(keyword, numeric_size)
         } else if self.token_is(&TokenKind::Varchar) {
             let keyword = Keyword::try_from(self.peek_token)?;
-            dbg!(self.peek_token);
             self.advance();
-            dbg!(self.peek_token);
             let float_precision = self.parse_float_precision()?;
             ast::DataType::Varchar(keyword, float_precision)
         } else {
@@ -1292,7 +1259,6 @@ impl<'a> Parser<'a> {
     fn parse_float_precision(&mut self) -> Result<Option<u32>, ParseError<'a>> {
         if self.token_is(&TokenKind::LeftParen) {
             let _ = self.expect_token(&TokenKind::LeftParen)?;
-            dbg!(self.peek_token);
             let numeric_literal = match self.peek_token {
                 Some(token) => ast::Expression::try_from(token)?,
                 _ => unreachable!(),
@@ -1305,7 +1271,6 @@ impl<'a> Parser<'a> {
                 _ => return parse_error(ParseErrorType::ExpectedFloatPrecision),
             };
             self.advance();
-            dbg!(self.peek_token);
             let _ = self.expect_token(&TokenKind::RightParen)?;
             Ok(Some(size))
         } else {
@@ -1360,9 +1325,7 @@ impl<'a> Parser<'a> {
 
         loop {
             self.expect_expression_list_start()?;
-            dbg!(self.peek_token);
             let expression = self.parse_expression(Precedence::Lowest)?;
-            dbg!(self.peek_token);
 
             expressions.push(expression);
             if !self.token_is(&TokenKind::Comma) {
@@ -1390,7 +1353,6 @@ impl<'a> Parser<'a> {
     ) -> Result<ast::Expression, ParseError<'a>> {
         let _ = self.expect_token(&TokenKind::LeftParen)?;
         let expr = if self.token_is(&TokenKind::Select) {
-            dbg!(self.peek_token);
             let subquery = ast::Expression::Subquery(Box::new(self.parse_select_statement()?));
             ast::Expression::InSubquery {
                 test_expression: Box::new(test_expression),
@@ -1452,9 +1414,7 @@ impl<'a> Parser<'a> {
     }
 
     fn parse_case_expression(&mut self) -> Result<ast::Expression, ParseError<'a>> {
-        dbg!(self.peek_token);
         let case_kw = self.consume_keyword(TokenKind::Case)?;
-        dbg!(&case_kw);
         if self.token_is(&TokenKind::When) {
             let conditions = self.parse_case_expressions()?;
             let end_kw = self.consume_keyword(TokenKind::End)?;
@@ -1514,7 +1474,6 @@ impl<'a> Parser<'a> {
         // check if the current token is an identifier
         // or if it is a prefix operator
         let mut left_expression = self.parse_prefix_expression()?;
-        dbg!(&left_expression);
 
         // parse the infix expression
         while precedence < self.peek_precedence() {
@@ -1579,7 +1538,6 @@ impl<'a> Parser<'a> {
             });
         } else if self.token_is(&TokenKind::Cast) {
             let expr = self.parse_cast_expression()?;
-            dbg!(&expr);
             return Ok(expr);
         } else if self.token_is(&TokenKind::LeftParen) {
             let subquery = self.parse_subquery()?;
@@ -1599,7 +1557,6 @@ impl<'a> Parser<'a> {
                 subquery: Box::new(subquery),
             });
         } else if self.token_is(&TokenKind::Case) {
-            dbg!("hello");
             let case_expr = self.parse_case_expression()?;
             return Ok(case_expr);
         }
@@ -1644,7 +1601,6 @@ impl<'a> Parser<'a> {
             let precedence = self.peek_precedence();
 
             self.advance();
-            dbg!(self.peek_token);
             if let Some(kw) = self.maybe_keyword(TokenKind::All) {
                 let subquery = self.parse_subquery()?;
                 return Ok(ast::Expression::All {
@@ -1672,8 +1628,6 @@ impl<'a> Parser<'a> {
             } else {
                 let right = self.parse_expression(precedence)?;
 
-                dbg!(&left);
-                dbg!(&right);
                 return Ok(ast::Expression::Comparison {
                     operator: op,
                     left: Box::new(left),
@@ -1691,11 +1645,8 @@ impl<'a> Parser<'a> {
             let precedence = self.peek_precedence();
 
             self.advance();
-            dbg!(self.peek_token);
             let right = self.parse_expression(precedence)?;
 
-            dbg!(&left);
-            dbg!(&right);
             return Ok(ast::Expression::Arithmetic {
                 operator: op,
                 left: Box::new(left),

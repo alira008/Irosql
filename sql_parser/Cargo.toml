@@ -8,3 +8,4 @@ edition = "2021"
 [dependencies]
 thiserror = "1.0.56"
 sql_lexer = { path = "../sql_lexer" }
+tracing = { workspace = true }

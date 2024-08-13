@@ -52,9 +52,6 @@ impl<'a> CommentMapper<'a> {
                         .push((min_distance.0, comment.clone()));
                 }
             }
-
-            dbg!(&self.comment_map_before_line);
-            dbg!(&self.comment_map_same_line);
         }
     }
 
