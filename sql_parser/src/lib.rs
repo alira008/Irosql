@@ -319,17 +319,21 @@ impl<'a> Parser<'a> {
             Ok(ast::Statement::Insert(insert_statement))
         } else {
             let columns = if self.token_is(&TokenKind::LeftParen) {
-                let _ = self.expect_token(&TokenKind::LeftParen)?;
+                let left_paren: Symbol = self.expect_token(&TokenKind::LeftParen)?.into();
                 let columns = self.parse_expression_list()?;
-                let _ = self.expect_token(&TokenKind::RightParen)?;
-                Some(columns)
+                let right_paren: Symbol = self.expect_token(&TokenKind::RightParen)?.into();
+                Some(ast::ExpressionList {
+                    left_paren,
+                    items: columns,
+                    right_paren,
+                })
             } else {
                 None
             };
             let values_kw = self.consume_keyword(TokenKind::Values)?;
-            let _ = self.expect_token(&TokenKind::LeftParen)?;
+            let left_paren: Symbol = self.expect_token(&TokenKind::LeftParen)?.into();
             let values = self.parse_expression_list()?;
-            let _ = self.expect_token(&TokenKind::RightParen)?;
+            let right_paren: Symbol = self.expect_token(&TokenKind::RightParen)?.into();
 
             let insert_statement = ast::InsertStatement::Values {
                 insert_kw,
@@ -337,7 +341,11 @@ impl<'a> Parser<'a> {
                 object,
                 columns,
                 values_kw,
-                values,
+                values: ast::ExpressionList {
+                    left_paren,
+                    items: values,
+                    right_paren,
+                },
             };
 
             Ok(ast::Statement::Insert(insert_statement))

@@ -529,9 +529,9 @@ pub fn walk_insert_statement<V: Visitor>(visitor: &mut V, stmt: &InsertStatement
             visitor.visit_keyword(insert_kw);
             walk_opt!(visitor, visit_keyword, into_kw);
             visitor.visit_expression(object);
-            walk_opt_list!(visitor, visit_expression, columns);
+            walk_opt!(visitor, visit_expression_list, columns);
             visitor.visit_keyword(values_kw);
-            walk_list!(visitor, visit_expression, values);
+            visitor.visit_expression_list(values);
             V::Result::output()
         }
         InsertStatement::Table {

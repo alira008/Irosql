@@ -180,9 +180,9 @@ pub enum InsertStatement {
         insert_kw: Keyword,
         into_kw: Option<Keyword>,
         object: Expression,
-        columns: Option<Vec<Expression>>,
+        columns: Option<ExpressionList>,
         values_kw: Keyword,
-        values: Vec<Expression>,
+        values: ExpressionList,
     },
     Table {
         insert_kw: Keyword,
@@ -360,13 +360,19 @@ pub enum NextOrFirst {
     First,
 }
 
+impl fmt::Display for ExpressionList {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.left_paren)?;
+        display_list_comma_separated(&self.items, f)?;
+        write!(f, "{}", self.right_paren)
+    }
+}
+
 impl fmt::Display for CommonTableExpression {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "{}", self.name)?;
         if let Some(columns) = &self.columns {
-            write!(f, " {}", columns.left_paren)?;
-            display_list_comma_separated(&columns.items, f)?;
-            write!(f, "{}", columns.right_paren)?;
+            write!(f, " {}", columns)?;
         }
         write!(
             f,
@@ -562,16 +568,12 @@ impl fmt::Display for InsertStatement {
                 write!(f, " {}", object)?;
 
                 if let Some(columns) = columns {
-                    f.write_str(" (")?;
-                    display_list_comma_separated(&columns, f)?;
-                    f.write_str(")")?;
+                    write!(f, " {}", columns)?;
                 }
 
                 write!(f, " {}", values_kw)?;
 
-                f.write_str(" (")?;
-                display_list_comma_separated(&values, f)?;
-                f.write_str(")")?;
+                write!(f, " {}", values)?;
                 Ok(())
             }
             InsertStatement::Table {
