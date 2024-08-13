@@ -114,22 +114,6 @@ impl Formatter {
         }
     }
 
-    fn print_column_list_open_paren(&mut self) {
-        self.increase_indent();
-        self.formatted_query.push_str(&'('.to_string());
-        if self.settings.indent_comma_lists.is_none() {
-            self.print_new_line();
-        }
-        self.decrease_indent();
-    }
-
-    fn print_column_list_close_paren(&mut self) {
-        if self.settings.indent_comma_lists.is_none() {
-            self.print_new_line();
-        }
-        self.formatted_query.push_str(&')'.to_string());
-    }
-
     fn print_column_list_open_paren_symbol(&mut self, symbol: &sql_parser::ast::Symbol) {
         self.increase_indent();
         self.visit_symbol(symbol);
