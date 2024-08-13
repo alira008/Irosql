@@ -1,4 +1,3 @@
-mod keyword;
 mod token;
 
 pub use token::{Span, Token, TokenKind};
