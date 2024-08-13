@@ -130,11 +130,32 @@ impl Formatter {
         self.formatted_query.push_str(&')'.to_string());
     }
 
+    fn print_column_list_open_paren_symbol(&mut self, symbol: &sql_parser::ast::Symbol) {
+        self.increase_indent();
+        self.visit_symbol(symbol);
+        if self.settings.indent_comma_lists.is_none() {
+            self.print_new_line();
+        }
+        self.decrease_indent();
+    }
+
+    fn print_column_list_close_paren_symbol(&mut self, symbol: &sql_parser::ast::Symbol) {
+        if self.settings.indent_comma_lists.is_none() {
+            self.print_new_line();
+        }
+        self.visit_symbol(symbol);
+    }
+
     fn print_comments_before(&mut self, location: Span) {
         let mut comment_present = false;
-        let comma_char = if self.formatted_query.chars().last().is_some_and(|ch| ch== ','){
+        let comma_char = if self
+            .formatted_query
+            .chars()
+            .last()
+            .is_some_and(|ch| ch == ',')
+        {
             self.formatted_query.pop()
-        }else {
+        } else {
             None
         };
         for (_, comment) in self
@@ -193,6 +214,16 @@ macro_rules! walk_opt_two {
 impl Visitor for Formatter {
     type Result = ();
 
+    fn visit_symbol_kind(&mut self, kind: sql_parser::ast::SymbolKind) -> Self::Result {
+        self.formatted_query += kind.to_string().as_str();
+    }
+
+    fn visit_symbol(&mut self, symbol: &sql_parser::ast::Symbol) -> Self::Result {
+        self.print_comments_before(symbol.location);
+        self.visit_symbol_kind(symbol.kind);
+        self.print_comments_same_line(symbol.location);
+    }
+
     fn visit_keyword_kind(&mut self, kind: sql_parser::ast::KeywordKind) -> Self::Result {
         self.print_keyword(kind.to_string().as_str())
     }
@@ -206,14 +237,6 @@ impl Visitor for Formatter {
     fn visit_literal(&mut self, literal: &sql_parser::ast::Literal) -> Self::Result {
         self.formatted_query += &literal.content;
         self.visit_span(&literal.location);
-    }
-
-    fn visit_asterisk(&mut self) -> Self::Result {
-        self.formatted_query += "*";
-    }
-
-    fn visit_select_item_wild_card(&mut self) -> Self::Result {
-        self.formatted_query += "*";
     }
 
     fn visit_comparison_operator_kind(
@@ -248,11 +271,19 @@ impl Visitor for Formatter {
     }
 
     fn visit_data_type_numeric_size(&mut self, ns: &sql_parser::ast::NumericSize) -> Self::Result {
+        self.visit_symbol(&ns.left_paren);
         self.formatted_query += ns.precision.to_string().as_str();
         if let Some(n) = ns.scale {
             self.formatted_query += ", ";
             self.formatted_query += n.to_string().as_str();
         }
+        self.visit_symbol(&ns.right_paren);
+    }
+
+    fn visit_data_type_size(&mut self, data_type_size: &sql_parser::ast::DataTypeSize) -> Self::Result {
+        self.visit_symbol(&data_type_size.left_paren);
+        self.formatted_query += data_type_size.size.to_string().as_str();
+        self.visit_symbol(&data_type_size.right_paren);
     }
 
     fn visit_data_type(&mut self, data_type: &sql_parser::ast::DataType) -> Self::Result {
@@ -269,17 +300,13 @@ impl Visitor for Formatter {
             DataType::Decimal(k, ns) | DataType::Numeric(k, ns) => {
                 self.visit_keyword(&k);
                 if let Some(ns) = ns {
-                    self.formatted_query += "(";
                     self.visit_data_type_numeric_size(ns);
-                    self.formatted_query += ")";
                 }
             }
             DataType::Float(k, n) | DataType::Varchar(k, n) => {
                 self.visit_keyword(&k);
                 if let Some(n) = n {
-                    self.formatted_query += "(";
-                    self.formatted_query += n.to_string().as_str();
-                    self.formatted_query += ")";
+                    self.visit_data_type_size(n);
                 }
             }
         }
@@ -313,6 +340,7 @@ impl Visitor for Formatter {
             sql_parser::ast::Statement::Declare {
                 declare_kw,
                 variables,
+                semicolon,
             } => {
                 self.visit_keyword(declare_kw);
                 self.print_space();
@@ -324,21 +352,23 @@ impl Visitor for Formatter {
                     self.visit_local_variable(var);
                 }
                 self.decrease_indent();
-                self.formatted_query += ";";
+                self.visit_symbol(semicolon);
             }
             sql_parser::ast::Statement::SetLocalVariable {
                 set_kw,
                 name,
+                equal_sign,
                 value,
+                semicolon
             } => {
                 self.visit_keyword(set_kw);
                 self.print_space();
                 self.visit_expression(name);
                 self.print_space();
-                self.formatted_query += "=";
+                self.visit_symbol(equal_sign);
                 self.print_space();
                 self.visit_expression(value);
-                self.formatted_query += ";";
+                self.visit_symbol(semicolon);
             }
             sql_parser::ast::Statement::Execute {
                 exec_kw,
@@ -366,23 +396,23 @@ impl Visitor for Formatter {
         self.visit_expression(&cte.name);
         self.print_space();
         if let Some(columns) = &cte.columns {
-            self.print_column_list_open_paren();
-            for (i, column) in columns.iter().enumerate() {
+            self.print_column_list_open_paren_symbol(&columns.left_paren);
+            for (i, column) in columns.items.iter().enumerate() {
                 if i > 0 {
                     self.print_in_list_comma();
                 }
                 self.visit_expression(column);
             }
-            self.print_column_list_close_paren();
+            self.print_column_list_close_paren_symbol(&columns.right_paren);
         }
         self.visit_keyword(&cte.as_kw);
-        self.formatted_query += "(";
+        self.visit_symbol(&cte.left_paren);
         self.increase_indent();
         self.print_new_line();
         self.visit_select_statement(&cte.query);
         self.decrease_indent();
         self.print_new_line();
-        self.formatted_query += ")";
+        self.visit_symbol(&cte.right_paren);
     }
 
     fn visit_local_variable(
@@ -394,9 +424,9 @@ impl Visitor for Formatter {
         self.visit_data_type(&local_variable.data_type);
         if let Some(value) = &local_variable.value {
             self.print_space();
-            self.formatted_query += "=";
+            self.visit_symbol(&value.0);
             self.print_space();
-            self.visit_expression(value);
+            self.visit_expression(&value.1);
         }
     }
 
@@ -413,9 +443,9 @@ impl Visitor for Formatter {
         param: &sql_parser::ast::ProcedureParameter,
     ) -> Self::Result {
         if let Some(name) = &param.name {
-            self.visit_execute_statement_procedure_parameter_name(name);
+            self.visit_execute_statement_procedure_parameter_name(&name.0);
             self.print_space();
-            self.formatted_query += "=";
+            self.visit_symbol(&name.1);
             self.print_space();
         }
         self.visit_expression(&param.value);
@@ -482,7 +512,7 @@ impl Visitor for Formatter {
 
     fn visit_select_item(&mut self, select_item: &sql_parser::ast::SelectItem) -> Self::Result {
         match select_item {
-            SelectItem::Wildcard => self.visit_select_item_wild_card(),
+            SelectItem::Wildcard(s) => self.visit_symbol(s),
             SelectItem::Unnamed(e) => self.visit_expression(e),
             SelectItem::WithAlias {
                 expression,
@@ -516,7 +546,7 @@ impl Visitor for Formatter {
 
     fn visit_expression(&mut self, expr: &sql_parser::ast::Expression) -> Self::Result {
         match expr {
-            Expression::Asterisk => self.visit_asterisk(),
+            Expression::Asterisk(s) => self.visit_symbol(s),
             Expression::Identifier(l) => {
                 self.print_comments_before(l.location);
                 self.visit_literal(l);
@@ -600,9 +630,15 @@ impl Visitor for Formatter {
                 self.visit_unary_operator(operator);
                 self.visit_expression(right)
             }
-            Expression::Function { name, args, over } => {
+            Expression::Function {
+                name,
+                left_paren,
+                args,
+                right_paren,
+                over,
+            } => {
                 self.visit_function_name(name);
-                self.formatted_query += "(";
+                self.visit_symbol(left_paren);
                 if let Some(args) = args {
                     for (i, arg) in args.iter().enumerate() {
                         if i > 0 {
@@ -611,43 +647,47 @@ impl Visitor for Formatter {
                         self.visit_expression(arg);
                     }
                 }
-                self.formatted_query += ")";
+                self.visit_symbol(right_paren);
                 walk_opt_two!(self, visit_function_over_clause, over, self.print_space());
             }
             Expression::Cast {
                 cast_kw,
+                left_paren,
                 expression,
                 as_kw,
                 data_type,
+                right_paren,
             } => {
                 self.visit_keyword(cast_kw);
-                self.formatted_query += "(";
+                self.visit_symbol(left_paren);
                 self.visit_expression(expression);
                 self.print_space();
                 self.visit_keyword(as_kw);
                 self.print_space();
                 self.visit_data_type(data_type);
-                self.formatted_query += ")";
+                self.visit_symbol(right_paren);
             }
             Expression::InExpressionList {
                 test_expression,
                 in_kw,
                 not_kw,
+                left_paren,
                 list,
+                right_paren,
             } => {
                 self.visit_expression(test_expression);
                 self.print_space();
                 self.visit_keyword(in_kw);
                 walk_opt_two!(self, visit_keyword, not_kw, self.print_space());
                 self.print_space();
-                self.print_column_list_open_paren();
+                self.print_column_list_open_paren_symbol(left_paren);
                 for (i, item) in list.iter().enumerate() {
                     if i > 0 {
                         self.print_in_list_comma();
                     }
                     self.visit_expression(item);
                 }
-                self.print_column_list_close_paren();
+                self.print_column_list_close_paren_symbol(right_paren);
             }
             Expression::InSubquery {
                 test_expression,
@@ -662,14 +702,18 @@ impl Visitor for Formatter {
                 self.print_space();
                 self.visit_expression(subquery);
             }
-            Expression::Subquery(e) => {
-                self.formatted_query += "(";
+            Expression::Subquery {
+                left_paren,
+                select_statement,
+                right_paren,
+            } => {
+                self.visit_symbol(left_paren);
                 self.increase_indent();
                 self.print_new_line();
-                self.visit_select_statement(e);
+                self.visit_select_statement(select_statement);
                 self.decrease_indent();
                 self.print_new_line();
-                self.formatted_query += ")";
+                self.visit_symbol(right_paren);
             }
             Expression::Between {
                 test_expression,

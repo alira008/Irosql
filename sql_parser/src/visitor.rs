@@ -3,12 +3,12 @@ use sql_lexer::Span;
 use crate::ast::{
     ArithmeticOperator, ArithmeticOperatorKind, CaseCondition, CommonTableExpression,
     CommonTableExpressionStatement, ComparisonOperator, ComparisonOperatorKind, DataType,
-    Expression, FetchArg, FunctionName, GroupByClause, HavingClause, InsertStatement, Join,
-    JoinType, Keyword, KeywordKind, Literal, LocalVariable, NextOrFirst, NumericSize, OffsetArg,
-    OffsetFetchClause, OrderByArg, OrderByClause, OverClause, ProcedureParameter,
-    ProcedureParameterName, Query, RowOrRows, RowsOrRange, SelectItem, SelectStatement, Statement,
-    TableArg, TableSource, Top, UnaryOperator, UnaryOperatorKind, WhereClause, WindowFrame,
-    WindowFrameBound, JoinCondition,
+    DataTypeSize, Expression, ExpressionList, FetchArg, FunctionName, GroupByClause, HavingClause,
+    InsertStatement, Join, JoinCondition, JoinType, Keyword, KeywordKind, Literal, LocalVariable,
+    NextOrFirst, NumericSize, OffsetArg, OffsetFetchClause, OrderByArg, OrderByClause, OverClause,
+    ProcedureParameter, ProcedureParameterName, Query, RowOrRows, RowsOrRange, SelectItem,
+    SelectStatement, Statement, Symbol, SymbolKind, TableArg, TableSource, Top, UnaryOperator,
+    UnaryOperatorKind, WhereClause, WindowFrame, WindowFrameBound,
 };
 
 pub trait Visitor: Sized {
@@ -36,6 +36,12 @@ pub trait Visitor: Sized {
         walk_common_table_expression_statement(self, stmt)
     }
 
+    fn visit_symbol(&mut self, symbol: &Symbol) -> Self::Result {
+        walk_symbol(self, symbol)
+    }
+    fn visit_symbol_kind(&mut self, _: SymbolKind) -> Self::Result {
+        Self::Result::output()
+    }
     fn visit_select_item_wild_card(&mut self) -> Self::Result {
         Self::Result::output()
     }
@@ -75,7 +81,14 @@ pub trait Visitor: Sized {
     fn visit_data_type(&mut self, data_type: &DataType) -> Self::Result {
         walk_data_type(self, data_type)
     }
-    fn visit_data_type_numeric_size(&mut self, _: &NumericSize) -> Self::Result {
+    fn visit_data_type_size(&mut self, data_type_size: &DataTypeSize) -> Self::Result {
+        walk_symbol(self, &data_type_size.left_paren);
+        walk_symbol(self, &data_type_size.right_paren);
+        Self::Result::output()
+    }
+    fn visit_data_type_numeric_size(&mut self, ns: &NumericSize) -> Self::Result {
+        walk_symbol(self, &ns.left_paren);
+        walk_symbol(self, &ns.right_paren);
         Self::Result::output()
     }
     fn visit_top_clause(&mut self, top_clause: &Top) -> Self::Result {
@@ -166,6 +179,9 @@ pub trait Visitor: Sized {
     fn visit_common_table_expression(&mut self, cte: &CommonTableExpression) -> Self::Result {
         walk_common_table_expression(self, cte)
     }
+    fn visit_expression_list(&mut self, list: &ExpressionList) -> Self::Result {
+        walk_expression_list(self, list)
+    }
     fn visit_execute_statement_procedure_parameter(
         &mut self,
         param: &ProcedureParameter,
@@ -235,7 +251,10 @@ pub fn walk_query<V: Visitor>(visitor: &mut V, query: &Query) -> V::Result {
 
 pub fn walk_expression<V: Visitor>(visitor: &mut V, expression: &Expression) -> V::Result {
     match expression {
-        Expression::Asterisk => visitor.visit_asterisk(),
+        Expression::Asterisk(s) => {
+            visitor.visit_symbol(s);
+            visitor.visit_asterisk()
+        }
         Expression::Identifier(l)
         | Expression::QuotedIdentifier(l)
         | Expression::StringLiteral(l)
@@ -282,34 +301,50 @@ pub fn walk_expression<V: Visitor>(visitor: &mut V, expression: &Expression) -> 
             visitor.visit_unary_operator(operator);
             visitor.visit_expression(right)
         }
-        Expression::Function { name, args, over } => {
+        Expression::Function {
+            name,
+            left_paren,
+            args,
+            right_paren,
+            over,
+        } => {
             visitor.visit_function_name(name);
+            visitor.visit_symbol(left_paren);
             walk_opt_list!(visitor, visit_expression, args);
+            visitor.visit_symbol(right_paren);
             walk_opt!(visitor, visit_function_over_clause, over);
 
             V::Result::output()
         }
         Expression::Cast {
             cast_kw,
+            left_paren,
             expression,
             as_kw,
             data_type,
+            right_paren,
         } => {
             visitor.visit_keyword(cast_kw);
+            visitor.visit_symbol(left_paren);
             visitor.visit_expression(expression);
             visitor.visit_keyword(as_kw);
-            visitor.visit_data_type(data_type)
+            visitor.visit_data_type(data_type);
+            visitor.visit_symbol(right_paren)
         }
         Expression::InExpressionList {
             test_expression,
             in_kw,
             not_kw,
+            left_paren,
             list,
+            right_paren,
         } => {
             visitor.visit_expression(test_expression);
             visitor.visit_keyword(in_kw);
             walk_opt!(visitor, visit_keyword, not_kw);
+            visitor.visit_symbol(left_paren);
             walk_list!(visitor, visit_expression, list);
+            visitor.visit_symbol(right_paren);
 
             V::Result::output()
         }
@@ -324,7 +359,15 @@ pub fn walk_expression<V: Visitor>(visitor: &mut V, expression: &Expression) -> 
             walk_opt!(visitor, visit_keyword, not_kw);
             visitor.visit_expression(subquery)
         }
-        Expression::Subquery(e) => visitor.visit_select_statement(e),
+        Expression::Subquery {
+            left_paren,
+            select_statement,
+            right_paren,
+        } => {
+            visitor.visit_symbol(left_paren);
+            visitor.visit_select_statement(select_statement);
+            visitor.visit_symbol(right_paren)
+        }
         Expression::Between {
             test_expression,
             not_kw,
@@ -436,19 +479,25 @@ pub fn walk_statement<V: Visitor>(visitor: &mut V, stmt: &Statement) -> V::Resul
         Statement::Declare {
             declare_kw,
             variables,
+            semicolon,
         } => {
             visitor.visit_keyword(declare_kw);
             walk_list!(visitor, visit_local_variable, variables);
+            visitor.visit_symbol(semicolon);
             V::Result::output()
         }
         Statement::SetLocalVariable {
             set_kw,
             name,
+            equal_sign,
             value,
+            semicolon,
         } => {
             visitor.visit_keyword(set_kw);
             visitor.visit_expression(name);
-            visitor.visit_expression(value)
+            visitor.visit_symbol(equal_sign);
+            visitor.visit_expression(value);
+            visitor.visit_symbol(semicolon)
         }
         Statement::Execute {
             exec_kw,
@@ -534,6 +583,10 @@ pub fn walk_common_table_expression_statement<V: Visitor>(
     }
 }
 
+pub fn walk_symbol<V: Visitor>(visitor: &mut V, symbol: &Symbol) -> V::Result {
+    visitor.visit_span(&symbol.location)
+}
+
 pub fn walk_literal<V: Visitor>(visitor: &mut V, literal: &Literal) -> V::Result {
     visitor.visit_span(&literal.location)
 }
@@ -575,7 +628,11 @@ pub fn walk_data_type<V: Visitor>(visitor: &mut V, data_type: &DataType) -> V::R
             walk_opt!(visitor, visit_data_type_numeric_size, &ns);
             V::Result::output()
         }
-        DataType::Float(k, _) | DataType::Varchar(k, _) => visitor.visit_keyword(&k),
+        DataType::Float(k, s) | DataType::Varchar(k, s) => {
+            visitor.visit_keyword(&k);
+            walk_opt!(visitor, visit_data_type_size, s);
+            V::Result::output()
+        }
     }
 }
 
@@ -588,7 +645,10 @@ pub fn walk_top_clause<V: Visitor>(visitor: &mut V, top_clause: &Top) -> V::Resu
 
 pub fn walk_select_item<V: Visitor>(visitor: &mut V, select_item: &SelectItem) -> V::Result {
     match select_item {
-        SelectItem::Wildcard => visitor.visit_select_item_wild_card(),
+        SelectItem::Wildcard(s) => {
+            visitor.visit_symbol(s);
+            visitor.visit_select_item_wild_card()
+        }
         SelectItem::Unnamed(e) => visitor.visit_expression(e),
         SelectItem::WithAlias {
             expression,
@@ -679,7 +739,10 @@ pub fn walk_table_join<V: Visitor>(visitor: &mut V, table_join: &Join) -> V::Res
     V::Result::output()
 }
 
-pub fn walk_table_join_condition<V: Visitor>(visitor: &mut V, table_join_condition: &JoinCondition) -> V::Result {
+pub fn walk_table_join_condition<V: Visitor>(
+    visitor: &mut V,
+    table_join_condition: &JoinCondition,
+) -> V::Result {
     visitor.visit_keyword(&table_join_condition.on_kw);
     visitor.visit_expression(&table_join_condition.condition);
 
@@ -698,7 +761,11 @@ pub fn walk_order_by_offset_fetch_clause<V: Visitor>(
     offset_fetch_clause: &OffsetFetchClause,
 ) -> V::Result {
     visitor.visit_order_by_offset_arg(&offset_fetch_clause.offset);
-    walk_opt!(visitor, visit_order_by_fetch_arg, &offset_fetch_clause.fetch);
+    walk_opt!(
+        visitor,
+        visit_order_by_fetch_arg,
+        &offset_fetch_clause.fetch
+    );
 
     V::Result::output()
 }
@@ -732,6 +799,7 @@ pub fn walk_function_over_clause<V: Visitor>(
     over_clause: &OverClause,
 ) -> V::Result {
     visitor.visit_keyword(&over_clause.over_kw);
+    visitor.visit_symbol(&over_clause.left_paren);
     walk_opt_list!(visitor, visit_keyword, &over_clause.partition_by_kws);
     walk_list!(visitor, visit_expression, &over_clause.partition_by);
     walk_opt_list!(visitor, visit_keyword, &over_clause.order_by_kws);
@@ -741,6 +809,7 @@ pub fn walk_function_over_clause<V: Visitor>(
         visit_function_over_clause_window_frame,
         &over_clause.window_frame
     );
+    visitor.visit_symbol(&over_clause.right_paren);
 
     V::Result::output()
 }
@@ -798,20 +867,25 @@ pub fn walk_common_table_expression<V: Visitor>(
     cte: &CommonTableExpression,
 ) -> V::Result {
     visitor.visit_expression(&cte.name);
-    walk_opt_list!(visitor, visit_expression, &cte.columns);
+    walk_opt!(visitor, visit_expression_list, &cte.columns);
     visitor.visit_keyword(&cte.as_kw);
     visitor.visit_select_statement(&cte.query)
+}
+
+pub fn walk_expression_list<V: Visitor>(visitor: &mut V, list: &ExpressionList) -> V::Result {
+    visitor.visit_symbol(&list.left_paren);
+    walk_list!(visitor, visit_expression, &list.items);
+    visitor.visit_symbol(&list.right_paren)
 }
 
 pub fn walk_execute_statement_procedure_parameter<V: Visitor>(
     visitor: &mut V,
     param: &ProcedureParameter,
 ) -> V::Result {
-    walk_opt!(
-        visitor,
-        visit_execute_statement_procedure_parameter_name,
-        &param.name
-    );
+    if let Some(name) = &param.name {
+        visitor.visit_execute_statement_procedure_parameter_name(&name.0);
+        visitor.visit_symbol(&name.1);
+    }
     visitor.visit_expression(&param.value)
 }
 
@@ -828,7 +902,10 @@ pub fn walk_local_variable<V: Visitor>(
 ) -> V::Result {
     visitor.visit_expression(&local_variable.name);
     visitor.visit_data_type(&local_variable.data_type);
-    walk_opt!(visitor, visit_expression, &local_variable.value);
+    if let Some(value) = &local_variable.value {
+        visitor.visit_symbol(&value.0);
+        visitor.visit_expression(&value.1);
+    }
 
     V::Result::output()
 }

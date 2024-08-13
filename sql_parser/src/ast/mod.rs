@@ -5,24 +5,83 @@ mod utils;
 
 use crate::error::{parse_error, ParseError, ParseErrorType};
 use core::fmt;
-pub use data_type::{DataType, NumericSize};
+pub use data_type::{DataType, DataTypeSize, NumericSize};
 pub use expressions::*;
 pub use keyword::{Keyword, KeywordKind};
 use sql_lexer::{Span, Token, TokenKind};
 pub use utils::*;
 
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
+pub enum SymbolKind {
+    LeftParen,
+    RightParen,
+    Asterisk,
+    Semicolon,
+    EqualSign,
+}
+
+impl fmt::Display for SymbolKind {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            SymbolKind::LeftParen => f.write_str("("),
+            SymbolKind::RightParen => f.write_str(")"),
+            SymbolKind::Asterisk => f.write_str("*"),
+            SymbolKind::Semicolon => f.write_str(";"),
+            SymbolKind::EqualSign => f.write_str("="),
+        }
+    }
+}
+
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
+pub struct Symbol {
+    pub kind: SymbolKind,
+    pub location: Span,
+}
+
+impl fmt::Display for Symbol {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.kind)
+    }
+}
+
+impl<'a> From<Token<'a>> for Symbol {
+    fn from(value: Token<'a>) -> Self {
+        let kind = match value.kind_as_ref() {
+            &TokenKind::Asterisk => SymbolKind::Asterisk,
+            &TokenKind::LeftParen => SymbolKind::LeftParen,
+            &TokenKind::RightParen => SymbolKind::RightParen,
+            &TokenKind::SemiColon => SymbolKind::Semicolon,
+            &TokenKind::Equal => SymbolKind::EqualSign,
+            _ => unreachable!(),
+        };
+        Symbol {
+            kind,
+            location: value.location(),
+        }
+    }
+}
+
 #[derive(Debug, PartialEq, Eq, Clone, Hash)]
 pub struct Comment {
     pub content: String,
-    pub span: Span
+    pub span: Span,
 }
 
 #[derive(Debug, PartialEq, Clone)]
 pub struct CommonTableExpression {
     pub name: Expression,
-    pub columns: Option<Vec<Expression>>,
+    pub columns: Option<ExpressionList>,
     pub as_kw: Keyword,
+    pub left_paren: Symbol,
     pub query: SelectStatement,
+    pub right_paren: Symbol,
+}
+
+#[derive(Debug, PartialEq, Clone)]
+pub struct ExpressionList {
+    pub left_paren: Symbol,
+    pub items: Vec<Expression>,
+    pub right_paren: Symbol,
 }
 
 #[derive(Debug, PartialEq, Clone)]
@@ -47,11 +106,14 @@ pub enum Statement {
     Declare {
         declare_kw: Keyword,
         variables: Vec<LocalVariable>,
+        semicolon: Symbol,
     },
     SetLocalVariable {
         set_kw: Keyword,
         name: Expression,
+        equal_sign: Symbol,
         value: Expression,
+        semicolon: Symbol,
     },
     Execute {
         exec_kw: Keyword,
@@ -62,7 +124,7 @@ pub enum Statement {
 
 #[derive(Debug, PartialEq, Clone)]
 pub struct ProcedureParameter {
-    pub name: Option<ProcedureParameterName>,
+    pub name: Option<(ProcedureParameterName, Symbol)>,
     pub value: Expression,
 }
 
@@ -76,7 +138,7 @@ pub struct ProcedureParameterName {
 pub struct LocalVariable {
     pub name: Expression,
     pub data_type: DataType,
-    pub value: Option<Expression>,
+    pub value: Option<(Symbol, Expression)>,
 }
 
 #[derive(Debug, PartialEq, Clone)]
@@ -94,7 +156,7 @@ impl Query {
 
 #[derive(Debug, PartialEq, Clone)]
 pub enum SelectItem {
-    Wildcard,
+    Wildcard(Symbol),
     Unnamed(Expression),
     WithAlias {
         expression: Expression,
@@ -302,11 +364,15 @@ impl fmt::Display for CommonTableExpression {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "{}", self.name)?;
         if let Some(columns) = &self.columns {
-            write!(f, " (")?;
-            display_list_comma_separated(&columns, f)?;
-            write!(f, ")")?;
+            write!(f, " {}", columns.left_paren)?;
+            display_list_comma_separated(&columns.items, f)?;
+            write!(f, "{}", columns.right_paren)?;
         }
-        write!(f, " {} ({})", self.as_kw, self.query)
+        write!(
+            f,
+            " {} {}{}{}",
+            self.as_kw, self.left_paren, self.query, self.right_paren
+        )
     }
 }
 
@@ -337,16 +403,23 @@ impl fmt::Display for Statement {
             Statement::Declare {
                 declare_kw,
                 variables,
+                semicolon,
             } => {
                 write!(f, "{} ", declare_kw)?;
                 display_list_comma_separated(variables, f)?;
-                f.write_str(";")
+                write!(f, "{}", semicolon)
             }
             Statement::SetLocalVariable {
                 set_kw,
                 name,
+                equal_sign,
                 value,
-            } => write!(f, "{} {} = {};", set_kw, name, value),
+                semicolon,
+            } => write!(
+                f,
+                "{} {} {} {}{}",
+                set_kw, name, equal_sign, value, semicolon
+            ),
             Statement::Execute {
                 exec_kw,
                 procedure_name,
@@ -366,7 +439,7 @@ impl fmt::Display for LocalVariable {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "{} {}", self.name, self.data_type)?;
         if let Some(value) = &self.value {
-            write!(f, " = {}", value)?;
+            write!(f, " {} {}", value.0, value.1)?;
         }
 
         Ok(())
@@ -376,7 +449,7 @@ impl fmt::Display for LocalVariable {
 impl fmt::Display for ProcedureParameter {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         if let Some(name) = &self.name {
-            write!(f, "{} = ", name)?;
+            write!(f, "{} {} ", name.0, name.1)?;
         }
         write!(f, "{}", self.value)?;
 
@@ -429,7 +502,7 @@ impl fmt::Display for Query {
 impl fmt::Display for SelectItem {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match &self {
-            SelectItem::Wildcard => write!(f, "*"),
+            SelectItem::Wildcard(s) => write!(f, "{}", s),
             SelectItem::Unnamed(expr) => write!(f, "{}", expr),
             SelectItem::WithAlias {
                 expression,

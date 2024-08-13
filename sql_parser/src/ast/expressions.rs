@@ -1,6 +1,6 @@
 use super::{
     display_list_comma_separated, display_list_delimiter_separated, DataType, Keyword,
-    SelectStatement,
+    SelectStatement, Symbol,
 };
 use crate::error::{parse_error, ParseError, ParseErrorType};
 use core::fmt;
@@ -39,11 +39,13 @@ pub struct OrderByArg {
 #[derive(Debug, PartialEq, Clone)]
 pub struct OverClause {
     pub over_kw: Keyword,
+    pub left_paren: Symbol,
     pub partition_by_kws: Option<Vec<Keyword>>,
     pub partition_by: Vec<Expression>,
     pub order_by_kws: Option<Vec<Keyword>>,
     pub order_by: Vec<OrderByArg>,
     pub window_frame: Option<WindowFrame>,
+    pub right_paren: Symbol,
 }
 
 #[derive(Debug, PartialEq, Clone)]
@@ -60,7 +62,7 @@ pub struct WindowFrame {
 
 #[derive(Debug, PartialEq, Clone)]
 pub enum Expression {
-    Asterisk,
+    Asterisk(Symbol),
     Identifier(Literal),
     QuotedIdentifier(Literal),
     StringLiteral(Literal),
@@ -94,20 +96,26 @@ pub enum Expression {
     },
     Function {
         name: Box<FunctionName>,
+        left_paren: Symbol,
         args: Option<Vec<Expression>>,
+        right_paren: Symbol,
         over: Option<Box<OverClause>>,
     },
     Cast {
         cast_kw: Keyword,
+        left_paren: Symbol,
         expression: Box<Expression>,
         as_kw: Keyword,
         data_type: DataType,
+        right_paren: Symbol,
     },
     InExpressionList {
         test_expression: Box<Expression>,
         in_kw: Keyword,
         not_kw: Option<Keyword>,
+        left_paren: Symbol,
         list: Vec<Expression>,
+        right_paren: Symbol,
     },
     InSubquery {
         test_expression: Box<Expression>,
@@ -115,7 +123,11 @@ pub enum Expression {
         not_kw: Option<Keyword>,
         subquery: Box<Expression>,
     },
-    Subquery(Box<SelectStatement>),
+    Subquery {
+        left_paren: Symbol,
+        select_statement: Box<SelectStatement>,
+        right_paren: Symbol,
+    },
     Between {
         test_expression: Box<Expression>,
         not_kw: Option<Keyword>,
@@ -436,7 +448,7 @@ impl<'a> TryFrom<Token<'a>> for Expression {
             TokenKind::NumberLiteral(_) => Expression::NumberLiteral(Literal::try_from(value)?),
             TokenKind::StringLiteral(_) => Expression::StringLiteral(Literal::try_from(value)?),
             TokenKind::LocalVariable(_) => Expression::LocalVariable(Literal::try_from(value)?),
-            TokenKind::Asterisk => Expression::Asterisk,
+            TokenKind::Asterisk => Expression::Asterisk(Symbol::from(value)),
             _ => return parse_error(ParseErrorType::ExpectedKeyword),
         };
         Ok(expr)
@@ -458,7 +470,7 @@ impl<'a> TryFrom<Option<Token<'a>>> for Expression {
 impl fmt::Display for Expression {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            Expression::Asterisk => write!(f, "*"),
+            Expression::Asterisk(v) => write!(f, "{}", v),
             Expression::Identifier(v) => write!(f, "{}", v),
             Expression::QuotedIdentifier(v) => write!(f, "[{}]", v),
             Expression::StringLiteral(v) => write!(f, "'{}'", v),
@@ -483,13 +495,18 @@ impl fmt::Display for Expression {
                 right,
             } => write!(f, "{} {} {}", left, and_kw, right),
             Expression::Or { or_kw, left, right } => write!(f, "{} {} {}", left, or_kw, right),
-            Expression::Function { name, args, over } => {
-                write!(f, "{}", name)?;
-                f.write_str("(")?;
+            Expression::Function {
+                name,
+                left_paren,
+                args,
+                right_paren,
+                over,
+            } => {
+                write!(f, "{}{}", name, left_paren)?;
                 if let Some(args_vec) = args {
                     display_list_comma_separated(args_vec, f)?;
                 }
-                f.write_str(")")?;
+                write!(f, "{}", right_paren)?;
                 if let Some(over_clause) = over {
                     write!(f, "{}", over_clause)?;
                 }
@@ -497,29 +514,41 @@ impl fmt::Display for Expression {
             }
             Expression::Cast {
                 cast_kw,
+                left_paren,
                 expression,
                 as_kw,
                 data_type,
-            } => write!(f, "{}({} {} {})", cast_kw, expression, as_kw, data_type),
+                right_paren,
+            } => write!(
+                f,
+                "{}{}{} {} {}{}",
+                cast_kw, left_paren, expression, as_kw, data_type, right_paren
+            ),
             Expression::InExpressionList {
                 test_expression,
                 in_kw,
                 not_kw,
+                left_paren,
                 list,
+                right_paren,
             } => {
                 write!(f, "{}", test_expression)?;
                 if let Some(kw) = not_kw {
                     write!(f, " {}", kw)?;
                 }
                 write!(f, " {}", in_kw)?;
-                f.write_str(" (")?;
+                write!(f, " {}", left_paren)?;
                 display_list_comma_separated(list, f)?;
-                f.write_str(")")?;
+                write!(f, "{}", right_paren)?;
 
                 Ok(())
             }
-            Expression::Subquery(s) => {
-                write!(f, "({})", s)
+            Expression::Subquery {
+                left_paren,
+                select_statement,
+                right_paren,
+            } => {
+                write!(f, "{}{}{}", left_paren, select_statement, right_paren)
             }
             Expression::InSubquery {
                 test_expression,
@@ -738,8 +767,7 @@ impl fmt::Display for WindowFrame {
 
 impl fmt::Display for OverClause {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, " {}", self.over_kw)?;
-        f.write_str("(")?;
+        write!(f, " {}{}", self.over_kw, self.left_paren)?;
         if let Some(partition_by_kws) = &self.partition_by_kws {
             display_list_delimiter_separated(&partition_by_kws, " ", f)?;
             f.write_str(" ")?;
@@ -762,7 +790,7 @@ impl fmt::Display for OverClause {
         if let Some(window_frame) = &self.window_frame {
             write!(f, "{}", window_frame)?;
         }
-        f.write_str(")")?;
+        write!(f, "{}", self.right_paren)?;
         Ok(())
     }
 }

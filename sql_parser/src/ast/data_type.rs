@@ -1,6 +1,6 @@
 use std::fmt;
 
-use super::Keyword;
+use super::{Keyword, Symbol};
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum DataType {
@@ -9,29 +9,44 @@ pub enum DataType {
     TinyInt(Keyword),
     SmallInt(Keyword),
     Bit(Keyword),
-    Float(Keyword, Option<u32>),
+    Float(Keyword, Option<DataTypeSize>),
     Real(Keyword),
     Date(Keyword),
     Datetime(Keyword),
     Time(Keyword),
     Decimal(Keyword, Option<NumericSize>),
     Numeric(Keyword, Option<NumericSize>),
-    Varchar(Keyword, Option<u32>),
+    Varchar(Keyword, Option<DataTypeSize>),
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct DataTypeSize {
+    pub left_paren: Symbol,
+    pub size: u32,
+    pub right_paren: Symbol,
+}
+
+impl fmt::Display for DataTypeSize {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}{}{}", self.left_paren, self.size, self.right_paren)
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct NumericSize {
+    pub left_paren: Symbol,
     pub precision: u32,
     pub scale: Option<u32>,
+    pub right_paren: Symbol,
 }
 
 impl fmt::Display for NumericSize {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{}", self.precision)?;
+        write!(f, "{}{}", self.left_paren, self.precision)?;
         if let Some(scale) = self.scale {
             write!(f, ", {}", scale)?;
         }
-        write!(f, "")
+        write!(f, "{}", self.right_paren)
     }
 }
 
@@ -46,7 +61,7 @@ impl fmt::Display for DataType {
             DataType::Float(k, s) => {
                 write!(f, "{}", k)?;
                 if let Some(p) = s {
-                    write!(f, "({})", p)?;
+                    write!(f, "{}", p)?;
                 }
                 Ok(())
             }
@@ -57,21 +72,21 @@ impl fmt::Display for DataType {
             DataType::Decimal(k, s) => {
                 write!(f, "{}", k)?;
                 if let Some(s) = s {
-                    write!(f, "({})", s)?;
+                    write!(f, "{}", s)?;
                 }
                 Ok(())
             }
             DataType::Numeric(k, s) => {
                 write!(f, "{}", k)?;
                 if let Some(s) = s {
-                    write!(f, "({})", s)?;
+                    write!(f, "{}", s)?;
                 }
                 Ok(())
             }
             DataType::Varchar(k, s) => {
                 write!(f, "{}", k)?;
                 if let Some(s) = s {
-                    write!(f, "({})", s)?;
+                    write!(f, "{}", s)?;
                 }
                 Ok(())
             }

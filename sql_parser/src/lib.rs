@@ -11,9 +11,8 @@ use crate::expr_start::{
     ORDER_BY_ARGS_START, PARTITION_BY_START, SELECT_ITEM_TYPE_START, TABLE_SOURCE_START,
 };
 use crate::operator::{get_precedence, Precedence};
-use ast::Comment;
+use ast::{Comment, DataTypeSize, Symbol};
 use sql_lexer::{Lexer, LexicalError, Token, TokenKind};
-use tracing::debug;
 
 #[derive(Debug, Clone)]
 pub struct Parser<'a> {
@@ -255,7 +254,7 @@ impl<'a> Parser<'a> {
         query
     }
 
-    pub fn comments(&self) -> &[Comment]{
+    pub fn comments(&self) -> &[Comment] {
         &self.comments
     }
 
@@ -364,14 +363,16 @@ impl<'a> Parser<'a> {
         let set_kw = self.consume_keyword(TokenKind::Set)?;
         let local_variable =
             ast::Expression::try_from(self.expect_token(&TokenKind::LocalVariable(""))?)?;
-        let _ = self.expect_token(&TokenKind::Equal)?;
+        let equal_sign: Symbol = self.expect_token(&TokenKind::Equal)?.into();
         let value = self.parse_expression(Precedence::Lowest)?;
-        let _ = self.expect_token(&TokenKind::SemiColon)?;
+        let semicolon: Symbol = self.expect_token(&TokenKind::SemiColon)?.into();
 
         Ok(ast::Statement::SetLocalVariable {
             set_kw,
             name: local_variable,
+            equal_sign,
             value,
+            semicolon,
         })
     }
 
@@ -383,8 +384,8 @@ impl<'a> Parser<'a> {
             let local_variable = self.expect_token(&TokenKind::LocalVariable(""))?;
             let data_type = self.parse_data_type()?;
             let value = if self.token_is(&TokenKind::Equal) {
-                self.advance();
-                Some(self.parse_expression(Precedence::Lowest)?)
+                let equal_sign: Symbol = self.expect_token(&TokenKind::Equal)?.into();
+                Some((equal_sign, self.parse_expression(Precedence::Lowest)?))
             } else {
                 None
             };
@@ -399,11 +400,12 @@ impl<'a> Parser<'a> {
             }
             self.advance();
         }
-        let _ = self.expect_token(&TokenKind::SemiColon)?;
+        let semicolon: Symbol = self.expect_token(&TokenKind::SemiColon)?.into();
 
         Ok(ast::Statement::Declare {
             declare_kw,
             variables,
+            semicolon,
         })
     }
 
@@ -414,23 +416,29 @@ impl<'a> Parser<'a> {
             let cte_name = ast::Expression::try_from(self.peek_token)?;
             self.advance();
             let column_list = if self.token_is(&TokenKind::LeftParen) {
-                self.advance();
+                let left_paren: Symbol = self.expect_token(&TokenKind::LeftParen)?.into();
                 let expr_list = self.parse_expression_list()?;
-                let _ = self.expect_token(&TokenKind::RightParen)?;
-                Some(expr_list)
+                let right_paren: Symbol = self.expect_token(&TokenKind::RightParen)?.into();
+                Some(ast::ExpressionList {
+                    left_paren,
+                    items: expr_list,
+                    right_paren,
+                })
             } else {
                 None
             };
             let as_kw = self.consume_keyword(TokenKind::As)?;
-            let _ = self.expect_token(&TokenKind::LeftParen)?;
+            let left_paren: Symbol = self.expect_token(&TokenKind::LeftParen)?.into();
             let query = self.parse_select_statement()?;
-            let _ = self.expect_token(&TokenKind::RightParen)?;
+            let right_paren: Symbol = self.expect_token(&TokenKind::RightParen)?.into();
 
             ctes.push(ast::CommonTableExpression {
                 name: cte_name,
                 columns: column_list,
                 as_kw,
+                left_paren,
                 query,
+                right_paren,
             });
 
             if !self.token_is(&TokenKind::Comma) {
@@ -475,9 +483,10 @@ impl<'a> Parser<'a> {
                 let tok = self.peek_token;
                 self.advance();
                 if self.token_is(&TokenKind::Equal) {
-                    self.advance();
+                    let equal_sign: Symbol = self.expect_token(&TokenKind::Equal)?.into();
                     let name = ast::ProcedureParameterName::try_from(tok)?;
-                    Some(name)
+
+                    Some((name, equal_sign))
                 } else {
                     let expr = ast::Expression::try_from(tok)?;
                     params.push(ast::ProcedureParameter {
@@ -584,7 +593,7 @@ impl<'a> Parser<'a> {
                     let alias = ast::Expression::try_from(self.peek_token)?;
                     self.advance();
 
-                    if matches!(expression, ast::Expression::Asterisk) {
+                    if matches!(expression, ast::Expression::Asterisk(_)) {
                         let select_item = ast::SelectItem::WildcardWithAlias {
                             expression,
                             as_kw,
@@ -600,8 +609,8 @@ impl<'a> Parser<'a> {
                         columns.push(select_item);
                     }
                 } else if as_kw.is_none() {
-                    if matches!(expression, ast::Expression::Asterisk) {
-                        columns.push(ast::SelectItem::Wildcard);
+                    if let ast::Expression::Asterisk(s) = expression {
+                        columns.push(ast::SelectItem::Wildcard(s));
                     } else {
                         columns.push(ast::SelectItem::Unnamed(expression));
                     }
@@ -820,25 +829,29 @@ impl<'a> Parser<'a> {
             _ => unreachable!(),
         };
 
-        let _ = self.expect_token(&TokenKind::LeftParen)?;
+        let left_paren: Symbol = self.expect_token(&TokenKind::LeftParen)?.into();
         let mut args = None;
         if !self.token_is(&TokenKind::RightParen) {
             args = Some(self.parse_function_args()?);
         }
-        let _ = self.expect_token(&TokenKind::RightParen)?;
+        let right_paren: Symbol = self.expect_token(&TokenKind::RightParen)?.into();
 
         if let Some(kw) = self.maybe_keyword(TokenKind::Over) {
             let over_clause = self.parse_function_over_clause(kw)?;
             return Ok(ast::Expression::Function {
                 name: Box::new(function_name),
+                left_paren,
                 args,
+                right_paren,
                 over: Some(Box::new(over_clause)),
             });
         }
 
         Ok(ast::Expression::Function {
             name: Box::new(function_name),
+            left_paren,
             args,
+            right_paren,
             over: None,
         })
     }
@@ -864,7 +877,7 @@ impl<'a> Parser<'a> {
         &mut self,
         over_kw: Keyword,
     ) -> Result<ast::OverClause, ParseError<'a>> {
-        let _ = self.expect_token(&TokenKind::LeftParen)?;
+        let left_paren: Symbol = self.expect_token(&TokenKind::LeftParen)?.into();
 
         let mut partition_by_kws = None;
         if let Some(partition_kw) = self.maybe_keyword(TokenKind::Partition) {
@@ -885,15 +898,17 @@ impl<'a> Parser<'a> {
             window_frame_clause = Some(self.parse_function_window_frame_clause()?);
         }
 
-        let _ = self.expect_token(&TokenKind::RightParen)?;
+        let right_paren: Symbol = self.expect_token(&TokenKind::RightParen)?.into();
 
         Ok(ast::OverClause {
             over_kw,
+            left_paren,
             partition_by_kws,
             partition_by: partition_by_clause,
             order_by_kws,
             order_by: order_by_args,
             window_frame: window_frame_clause,
+            right_paren,
         })
     }
 
@@ -1176,19 +1191,21 @@ impl<'a> Parser<'a> {
 
     fn parse_cast_expression(&mut self) -> Result<ast::Expression, ParseError<'a>> {
         let cast_kw = self.consume_keyword(TokenKind::Cast)?;
-        let _ = self.expect_token(&TokenKind::LeftParen)?;
+        let left_paren: Symbol = self.expect_token(&TokenKind::LeftParen)?.into();
 
         let expression = self.parse_expression(Precedence::Lowest)?;
 
         let as_kw = self.consume_keyword(TokenKind::As)?;
         let data_type = self.parse_data_type()?;
-        let _ = self.expect_token(&TokenKind::RightParen)?;
+        let right_paren: Symbol = self.expect_token(&TokenKind::RightParen)?.into();
 
         Ok(ast::Expression::Cast {
             cast_kw,
+            left_paren,
             expression: Box::new(expression),
             as_kw,
             data_type,
+            right_paren,
         })
     }
 
@@ -1232,8 +1249,8 @@ impl<'a> Parser<'a> {
         } else if self.token_is(&TokenKind::Float) {
             let keyword = Keyword::try_from(self.peek_token)?;
             self.advance();
-            let float_precision = self.parse_float_precision()?;
-            ast::DataType::Float(keyword, float_precision)
+            let data_type_size = self.parse_data_type_size()?;
+            ast::DataType::Float(keyword, data_type_size)
         } else if self.token_is(&TokenKind::Decimal) {
             let keyword = Keyword::try_from(self.peek_token)?;
             self.advance();
@@ -1247,8 +1264,8 @@ impl<'a> Parser<'a> {
         } else if self.token_is(&TokenKind::Varchar) {
             let keyword = Keyword::try_from(self.peek_token)?;
             self.advance();
-            let float_precision = self.parse_float_precision()?;
-            ast::DataType::Varchar(keyword, float_precision)
+            let data_type_size = self.parse_data_type_size()?;
+            ast::DataType::Varchar(keyword, data_type_size)
         } else {
             return parse_error(ParseErrorType::ExpectedDataType);
         };
@@ -1256,9 +1273,9 @@ impl<'a> Parser<'a> {
         Ok(data_type)
     }
 
-    fn parse_float_precision(&mut self) -> Result<Option<u32>, ParseError<'a>> {
+    fn parse_data_type_size(&mut self) -> Result<Option<DataTypeSize>, ParseError<'a>> {
         if self.token_is(&TokenKind::LeftParen) {
-            let _ = self.expect_token(&TokenKind::LeftParen)?;
+            let left_paren: Symbol = self.expect_token(&TokenKind::LeftParen)?.into();
             let numeric_literal = match self.peek_token {
                 Some(token) => ast::Expression::try_from(token)?,
                 _ => unreachable!(),
@@ -1271,23 +1288,39 @@ impl<'a> Parser<'a> {
                 _ => return parse_error(ParseErrorType::ExpectedFloatPrecision),
             };
             self.advance();
-            let _ = self.expect_token(&TokenKind::RightParen)?;
-            Ok(Some(size))
+            let right_paren: Symbol = self.expect_token(&TokenKind::RightParen)?.into();
+            Ok(Some(DataTypeSize {
+                left_paren,
+                size,
+                right_paren,
+            }))
         } else {
             Ok(None)
         }
     }
 
+    fn parse_float_precision(&mut self) -> Result<u32, ParseError<'a>> {
+        let numeric_literal = match self.peek_token {
+            Some(token) => ast::Expression::try_from(token)?,
+            _ => unreachable!(),
+        };
+        let size: u32 = match numeric_literal {
+            ast::Expression::NumberLiteral(n) => match n.content.parse() {
+                Ok(n) => n,
+                Err(_) => return parse_error(ParseErrorType::ExpectedFloatPrecision),
+            },
+            _ => return parse_error(ParseErrorType::ExpectedFloatPrecision),
+        };
+        Ok(size)
+    }
+
     fn parse_numeric_size(&mut self) -> Result<Option<ast::NumericSize>, ParseError<'a>> {
-        let _ = self.expect_token(&TokenKind::LeftParen)?;
+        let left_paren: Symbol = self.expect_token(&TokenKind::LeftParen)?.into();
         if self.token_is(&TokenKind::RightParen) {
             return Ok(None);
         }
 
-        let float_precision = match self.parse_float_precision()? {
-            Some(p) => p,
-            None => return parse_error(ParseErrorType::ExpectedFloatPrecision),
-        };
+        let float_precision = self.parse_float_precision()?;
 
         let scale = if self.token_is(&TokenKind::Comma) {
             let _ = self.expect_token(&TokenKind::Comma)?;
@@ -1296,11 +1329,13 @@ impl<'a> Parser<'a> {
             None
         };
 
-        let _ = self.expect_token(&TokenKind::RightParen)?;
+        let right_paren: Symbol = self.expect_token(&TokenKind::RightParen)?.into();
 
         Ok(Some(ast::NumericSize {
+            left_paren,
             precision: float_precision,
             scale,
+            right_paren,
         }))
     }
 
@@ -1338,11 +1373,15 @@ impl<'a> Parser<'a> {
     }
 
     fn parse_subquery(&mut self) -> Result<ast::Expression, ParseError<'a>> {
-        let _ = self.expect_token(&TokenKind::LeftParen)?;
+        let left_paren: Symbol = self.expect_token(&TokenKind::LeftParen)?.into();
         let select_statement = self.parse_select_statement()?;
-        let _ = self.expect_token(&TokenKind::RightParen)?;
+        let right_paren: Symbol = self.expect_token(&TokenKind::RightParen)?.into();
 
-        Ok(ast::Expression::Subquery(Box::new(select_statement)))
+        Ok(ast::Expression::Subquery {
+            left_paren,
+            select_statement: Box::new(select_statement),
+            right_paren,
+        })
     }
 
     fn parse_in_expression(
@@ -1351,9 +1390,15 @@ impl<'a> Parser<'a> {
         in_kw: Keyword,
         not_kw: Option<Keyword>,
     ) -> Result<ast::Expression, ParseError<'a>> {
-        let _ = self.expect_token(&TokenKind::LeftParen)?;
+        let left_paren: Symbol = self.expect_token(&TokenKind::LeftParen)?.into();
         let expr = if self.token_is(&TokenKind::Select) {
-            let subquery = ast::Expression::Subquery(Box::new(self.parse_select_statement()?));
+            let select_statement = self.parse_select_statement()?;
+            let right_paren: Symbol = self.expect_token(&TokenKind::RightParen)?.into();
+            let subquery = ast::Expression::Subquery {
+                left_paren,
+                select_statement: Box::new(select_statement),
+                right_paren,
+            };
             ast::Expression::InSubquery {
                 test_expression: Box::new(test_expression),
                 in_kw,
@@ -1362,17 +1407,18 @@ impl<'a> Parser<'a> {
             }
         } else if self.token_is_any(&EXPRESSION_LIST_START) {
             let list = self.parse_expression_list()?;
+            let right_paren: Symbol = self.expect_token(&TokenKind::RightParen)?.into();
             ast::Expression::InExpressionList {
                 test_expression: Box::new(test_expression),
                 in_kw,
                 not_kw,
+                left_paren,
                 list,
+                right_paren,
             }
         } else {
             return parse_error(ParseErrorType::ExpectedSubqueryOrExpressionList);
         };
-
-        let _ = self.expect_token(&TokenKind::RightParen)?;
 
         Ok(expr)
     }
