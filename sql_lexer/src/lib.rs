@@ -144,7 +144,6 @@ impl<'a> Lexer<'a> {
         let mut end = self.current_position;
         let mut start_found = false;
         while self.chars.peek().is_some_and(|ch| ch != &'\n') {
-            self.read_char();
             if self.ch.is_some_and(|ch| !ch.is_whitespace()) {
                 if !start_found {
                     start = self.current_position;
@@ -152,6 +151,7 @@ impl<'a> Lexer<'a> {
                 }
                 end = self.current_position;
             }
+            self.read_char();
         }
         // read the closing quote
         self.read_char();
@@ -281,18 +281,6 @@ impl<'a> Iterator for Lexer<'a> {
     type Item = LexerResult<'a>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        let next_token = self.next_lex();
-
-        Some(next_token)
-        // match next_token {
-        //     Ok(token) => {
-        //         if matches!(token.kind_as_ref(), TokenKind::Eof) {
-        //             None
-        //         } else {
-        //             Some(next_token)
-        //         }
-        //     }
-        //     Err(_) => Some(next_token),
-        // }
+        Some(self.next_lex())
     }
 }

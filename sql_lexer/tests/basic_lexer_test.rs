@@ -1,4 +1,4 @@
-use sql_lexer::{Lexer, LexicalError, LexicalErrorType, TokenKind};
+use sql_lexer::{Lexer, LexicalError, LexicalErrorType, Span, TokenKind};
 
 #[test]
 fn test_random_tokens() {
@@ -8,6 +8,9 @@ fn test_random_tokens() {
     for result in lexer {
         let token = result.unwrap();
         tokens.push(token.kind());
+        if result.is_ok_and(|t| t.shallow_eq_token_kind(&TokenKind::Eof)) {
+            break;
+        }
     }
     let expected_tokens = vec![
         TokenKind::Desc,
@@ -16,6 +19,7 @@ fn test_random_tokens() {
         TokenKind::Preceding,
         TokenKind::SemiColon,
         TokenKind::Period,
+        TokenKind::Eof,
     ];
 
     assert_eq!(expected_tokens, tokens);
@@ -29,6 +33,9 @@ fn test_identifiers_unquoted() {
     for result in lexer {
         let token = result.unwrap();
         tokens.push(token.kind());
+        if result.is_ok_and(|t| t.shallow_eq_token_kind(&TokenKind::Eof)) {
+            break;
+        }
     }
 
     let expected_tokens = vec![
@@ -38,6 +45,7 @@ fn test_identifiers_unquoted() {
         TokenKind::Identifier("id"),
         TokenKind::From,
         TokenKind::Identifier("users"),
+        TokenKind::Eof,
     ];
 
     assert_eq!(expected_tokens, tokens);
@@ -51,6 +59,9 @@ fn test_identifiers_quoted() {
     for result in lexer {
         let token = result.unwrap();
         tokens.push(token.kind());
+        if result.is_ok_and(|t| t.shallow_eq_token_kind(&TokenKind::Eof)) {
+            break;
+        }
     }
 
     let expected_tokens = vec![
@@ -61,6 +72,7 @@ fn test_identifiers_quoted() {
         TokenKind::Identifier("id"),
         TokenKind::From,
         TokenKind::Identifier("users"),
+        TokenKind::Eof,
     ];
 
     assert_eq!(expected_tokens, tokens);
@@ -74,6 +86,9 @@ fn test_string() {
     for result in lexer {
         let token = result.unwrap();
         tokens.push(token.kind());
+        if result.is_ok_and(|t| t.shallow_eq_token_kind(&TokenKind::Eof)) {
+            break;
+        }
     }
 
     let expected_tokens = vec![
@@ -85,6 +100,7 @@ fn test_string() {
         TokenKind::Identifier("id"),
         TokenKind::From,
         TokenKind::Identifier("users"),
+        TokenKind::Eof,
     ];
 
     assert_eq!(expected_tokens, tokens);
@@ -92,12 +108,15 @@ fn test_string() {
 
 #[test]
 fn test_comment() {
-    let input = "select name as 'SuperName',-- yes id \nfrom users";
+    let input = "select name as 'SuperName',--yes id \nfrom users";
     let lexer = Lexer::new(input);
     let mut tokens = Vec::new();
     for result in lexer {
         let token = result.unwrap();
         tokens.push(token.kind());
+        if result.is_ok_and(|t| t.shallow_eq_token_kind(&TokenKind::Eof)) {
+            break;
+        }
     }
 
     let expected_tokens = vec![
@@ -109,6 +128,7 @@ fn test_comment() {
         TokenKind::Comment("yes id"),
         TokenKind::From,
         TokenKind::Identifier("users"),
+        TokenKind::Eof,
     ];
 
     assert_eq!(expected_tokens, tokens);
@@ -121,6 +141,9 @@ fn test_illegal_string_literal() {
     let mut tokens = Vec::new();
     for result in lexer {
         tokens.push(result.map(|t| t.kind()));
+        if result.is_ok_and(|t| t.shallow_eq_token_kind(&TokenKind::Eof)) {
+            break;
+        }
     }
 
     let expected_tokens = vec![
@@ -129,7 +152,9 @@ fn test_illegal_string_literal() {
         Ok(TokenKind::As),
         Err(LexicalError {
             error: LexicalErrorType::UnexpectedStringEnd,
+            span: Span { start: 16, end: 44 },
         }),
+        Ok(TokenKind::Eof),
     ];
 
     assert_eq!(expected_tokens, tokens);
@@ -142,6 +167,9 @@ fn test_illegal_quoted_identifier() {
     let mut tokens = Vec::new();
     for result in lexer {
         tokens.push(result.map(|t| t.kind()));
+        if result.is_ok_and(|t| t.shallow_eq_token_kind(&TokenKind::Eof)) {
+            break;
+        }
     }
 
     let expected_tokens = vec![
@@ -150,7 +178,9 @@ fn test_illegal_quoted_identifier() {
         Ok(TokenKind::As),
         Err(LexicalError {
             error: LexicalErrorType::UnexpectedQuotedIdentifierEnd,
+            span: Span { start: 16, end: 44 },
         }),
+        Ok(TokenKind::Eof),
     ];
 
     assert_eq!(expected_tokens, tokens);
