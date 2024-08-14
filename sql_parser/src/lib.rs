@@ -104,7 +104,16 @@ impl<'a> Parser<'a> {
             self.advance();
             return Ok(tok);
         }
-        parse_error(ParseErrorType::UnrecognizedEof)
+        self.unexpected_token(vec![token_kind.to_string()])
+    }
+
+    fn expect_token_any(&mut self, token_kinds: &[TokenKind]) -> Result<Token<'a>, ParseError<'a>> {
+        if self.token_is_any(token_kinds) {
+            let tok = self.peek_token.unwrap();
+            self.advance();
+            return Ok(tok);
+        }
+        self.unexpected_token(token_kinds.iter().map(|s| s.to_string()).collect())
     }
 
     fn token_is_any(&mut self, token_kinds: &[TokenKind]) -> bool {
@@ -122,11 +131,16 @@ impl<'a> Parser<'a> {
 
     fn unexpected_token<A>(&self, expected: Vec<String>) -> Result<A, ParseError<'a>> {
         match self.peek_token {
-            Some(t) => parse_error(ParseErrorType::UnexpectedToken {
-                token: *t.kind_as_ref(),
+            Some(t) => parse_error(
+                ParseErrorType::UnexpectedToken {
+                    token: *t.kind_as_ref(),
+                    expected,
+                }
+            ),
+            None => parse_error(ParseErrorType::UnexpectedToken {
+                token: TokenKind::Eof,
                 expected,
             }),
-            None => parse_error(ParseErrorType::UnrecognizedEof),
         }
     }
 
@@ -138,7 +152,12 @@ impl<'a> Parser<'a> {
                 }
             }
         }
-        self.unexpected_token(FUNCTION_ARGS_START.iter().map(|s| s.to_string()).collect())
+        self.unexpected_token(
+            FUNCTION_ARGS_START
+                .iter()
+                .map(|s| s.string_type().to_string())
+                .collect(),
+        )
     }
 
     fn expect_select_item_start(&mut self) -> Result<(), ParseError<'a>> {
@@ -155,7 +174,7 @@ impl<'a> Parser<'a> {
         self.unexpected_token(
             SELECT_ITEM_TYPE_START
                 .iter()
-                .map(|s| s.to_string())
+                .map(|s| s.string_type().to_string())
                 .collect(),
         )
     }
@@ -171,7 +190,12 @@ impl<'a> Parser<'a> {
                 }
             }
         }
-        self.unexpected_token(GROUP_BY_START.iter().map(|s| s.to_string()).collect())
+        self.unexpected_token(
+            GROUP_BY_START
+                .iter()
+                .map(|s| s.string_type().to_string())
+                .collect(),
+        )
     }
 
     fn expect_expression_list_start(&mut self) -> Result<(), ParseError<'a>> {
@@ -188,7 +212,7 @@ impl<'a> Parser<'a> {
         self.unexpected_token(
             EXPRESSION_LIST_START
                 .iter()
-                .map(|s| s.to_string())
+                .map(|s| s.string_type().to_string())
                 .collect(),
         )
     }
@@ -201,7 +225,12 @@ impl<'a> Parser<'a> {
                 }
             }
         }
-        self.unexpected_token(ORDER_BY_ARGS_START.iter().map(|s| s.to_string()).collect())
+        self.unexpected_token(
+            ORDER_BY_ARGS_START
+                .iter()
+                .map(|s| s.string_type().to_string())
+                .collect(),
+        )
     }
 
     fn expect_partition_by_start(&mut self) -> Result<(), ParseError<'a>> {
@@ -212,7 +241,12 @@ impl<'a> Parser<'a> {
                 }
             }
         }
-        self.unexpected_token(PARTITION_BY_START.iter().map(|s| s.to_string()).collect())
+        self.unexpected_token(
+            PARTITION_BY_START
+                .iter()
+                .map(|s| s.string_type().to_string())
+                .collect(),
+        )
     }
 
     fn expect_table_source_start(&mut self) -> Result<(), ParseError<'a>> {
@@ -223,7 +257,12 @@ impl<'a> Parser<'a> {
                 }
             }
         }
-        self.unexpected_token(TABLE_SOURCE_START.iter().map(|s| s.to_string()).collect())
+        self.unexpected_token(
+            TABLE_SOURCE_START
+                .iter()
+                .map(|s| s.string_type().to_string())
+                .collect(),
+        )
     }
 
     fn maybe_keyword(&mut self, kind: TokenKind) -> Option<Keyword> {
@@ -244,7 +283,7 @@ impl<'a> Parser<'a> {
                 return Ok(keyword);
             }
         }
-        parse_error(ParseErrorType::ExpectedKeyword)
+        self.unexpected_token(vec![kind.to_string()])
     }
 }
 
@@ -281,8 +320,17 @@ impl<'a> Parser<'a> {
                 TokenKind::Set => return self.parse_set_local_variable_statement(),
                 TokenKind::Exec | TokenKind::Execute => return self.parse_execute_statement(),
                 _ => {
+                    let err = self.unexpected_token(vec![
+                        TokenKind::Select.to_string(),
+                        TokenKind::Insert.to_string(),
+                        TokenKind::With.to_string(),
+                        TokenKind::Declare.to_string(),
+                        TokenKind::Set.to_string(),
+                        TokenKind::Exec.to_string(),
+                        TokenKind::Execute.to_string(),
+                    ]);
                     self.advance();
-                    return parse_error(ParseErrorType::ExpectedKeyword);
+                    return err;
                 }
             },
             None => todo!(),
@@ -1051,7 +1099,7 @@ impl<'a> Parser<'a> {
             window_frame_bound_end = ast::WindowFrameBound::Preceding(expr);
         } else {
             return parse_error(
-                ParseErrorType::ExpectedUnboundedPrecedingCurrentRowOrNumberFollowing,
+                ParseErrorType::ExpectedUnboundedFollowingCurrentRowOrNumberFollowing,
             );
         }
 
@@ -1579,7 +1627,7 @@ impl<'a> Parser<'a> {
                 return Ok(self.parse_function(fn_name)?);
             }
 
-            unreachable!();
+            self.unexpected_token(vec![TokenKind::LeftParen.string_type().to_string()])?
         } else if self.token_is_any(&[TokenKind::Minus, TokenKind::Plus]) {
             let unary_op = ast::UnaryOperator::try_from(self.peek_token)?;
 

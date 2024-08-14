@@ -14,6 +14,16 @@ pub enum LexicalErrorType {
     UnexpectedQuotedIdentifierEnd,
 }
 
+impl LexicalError {
+    pub fn details(&self) -> String {
+        match &self.error {
+            LexicalErrorType::UnrecognizedToken => "unrecognized token",
+            LexicalErrorType::UnexpectedStringEnd => "unexpected end of string",
+            LexicalErrorType::UnexpectedQuotedIdentifierEnd => "unexpected end of quoted identifier",
+        }.into()
+    }
+}
+
 pub type LexerResult<'a> = Result<Token<'a>, LexicalError>;
 
 #[derive(Debug, Clone)]

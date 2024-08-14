@@ -1,3 +1,5 @@
+use std::ops::Deref;
+
 use crate::comments::CommentMapper;
 use sql_lexer::Span;
 use sql_parser::{
@@ -31,8 +33,15 @@ impl Formatter {
         let lexer = sql_lexer::Lexer::new(input);
         let mut parser = sql_parser::Parser::new(lexer);
         let query = parser.parse();
-        for err in parser.errors() {
-            eprintln!("Error: {:#?}", err);
+        let mut error_string = String::new();
+        for (i, err) in parser.errors().iter().enumerate() {
+            if i > 0 {
+                error_string.push('\n');
+            }
+            error_string.push_str(format!("{}", err.details()).as_str());
+        }
+        if !error_string.is_empty() {
+            return Err(error_string);
         }
 
         let mut comment_mapper = CommentMapper::new(input, parser.comments());
