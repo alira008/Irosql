@@ -659,7 +659,14 @@ impl Visitor for Formatter {
                     }
                 }
                 self.visit_symbol(right_paren);
-                walk_opt_two!(self, visit_function_over_clause, over, self.print_space());
+                self.increase_indent();
+                walk_opt_two!(
+                    self,
+                    visit_function_over_clause,
+                    over,
+                    self.print_new_line()
+                );
+                self.decrease_indent();
             }
             Expression::Cast {
                 cast_kw,
@@ -1040,8 +1047,11 @@ impl Visitor for Formatter {
         over_clause: &sql_parser::ast::OverClause,
     ) -> Self::Result {
         self.visit_keyword(&over_clause.over_kw);
+        self.print_space();
         self.visit_symbol(&over_clause.left_paren);
         if let Some(kws) = &over_clause.partition_by_kws {
+            self.increase_indent();
+            self.print_new_line();
             for (i, kw) in kws.iter().enumerate() {
                 if i > 0 {
                     self.print_space();
@@ -1055,9 +1065,11 @@ impl Visitor for Formatter {
                 }
                 self.visit_expression(e);
             }
-            self.print_space();
+            self.decrease_indent();
         }
         if let Some(kws) = &over_clause.order_by_kws {
+            self.increase_indent();
+            self.print_new_line();
             for (i, kw) in kws.iter().enumerate() {
                 if i > 0 {
                     self.print_space();
@@ -1071,10 +1083,19 @@ impl Visitor for Formatter {
                 }
                 self.visit_order_by_arg(o);
             }
-            self.print_space();
+            self.decrease_indent();
         }
         if let Some(window_frame) = &over_clause.window_frame {
+            self.increase_indent();
+            self.print_new_line();
             self.visit_function_over_clause_window_frame(window_frame);
+            self.decrease_indent();
+        }
+        if over_clause.partition_by_kws.is_some()
+            || over_clause.order_by_kws.is_some()
+            || over_clause.window_frame.is_some()
+        {
+            self.print_new_line();
         }
         self.visit_symbol(&over_clause.right_paren);
     }
