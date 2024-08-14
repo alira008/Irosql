@@ -31,6 +31,9 @@ impl Formatter {
         let lexer = sql_lexer::Lexer::new(input);
         let mut parser = sql_parser::Parser::new(lexer);
         let query = parser.parse();
+        for err in parser.errors() {
+            eprintln!("Error: {:#?}", err);
+        }
 
         let mut comment_mapper = CommentMapper::new(input, parser.comments());
         comment_mapper.map(&query);

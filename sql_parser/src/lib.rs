@@ -37,6 +37,14 @@ impl<'a> Parser<'a> {
         parser
     }
 
+    pub fn errors(&self) -> &[ParseError<'a>] {
+        &self.parse_errors
+    }
+
+    pub fn comments(&self) -> &[Comment] {
+        &self.comments
+    }
+
     fn advance(&mut self) {
         let _ = self.next_token();
     }
@@ -252,10 +260,6 @@ impl<'a> Parser<'a> {
         }
 
         query
-    }
-
-    pub fn comments(&self) -> &[Comment] {
-        &self.comments
     }
 
     fn parse_statement(&mut self) -> Result<ast::Statement, ParseError<'a>> {
