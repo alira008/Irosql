@@ -953,19 +953,27 @@ impl<'a> Parser<'a> {
     ) -> Result<ast::OverClause, ParseError<'a>> {
         let left_paren: Symbol = self.expect_token(&TokenKind::LeftParen)?.into();
 
-        let mut partition_by_kws = None;
+        let partition_by_kws;
+        let partition_by_clause;
         if let Some(partition_kw) = self.maybe_keyword(TokenKind::Partition) {
             let by_kw = self.consume_keyword(TokenKind::By)?;
             partition_by_kws = Some(vec![partition_kw, by_kw]);
+            partition_by_clause = self.parse_function_partition_clause()?;
+        } else {
+            partition_by_kws = None;
+            partition_by_clause = vec![];
         }
-        let partition_by_clause = self.parse_function_partition_clause()?;
 
-        let mut order_by_kws = None;
+        let order_by_kws;
+        let order_by_args;
         if let Some(order_kw) = self.maybe_keyword(TokenKind::Order) {
             let by_kw = self.consume_keyword(TokenKind::By)?;
             order_by_kws = Some(vec![order_kw, by_kw]);
+            order_by_args = self.parse_order_by_args()?;
+        } else {
+            order_by_kws = None;
+            order_by_args = vec![];
         }
-        let order_by_args = self.parse_order_by_args()?;
 
         let mut window_frame_clause = None;
         if self.token_is_any(&[TokenKind::Rows, TokenKind::Range]) {
