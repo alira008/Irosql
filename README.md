@@ -1,7 +1,5 @@
 # Irosql
 
-## Irosql
-
 ### Todo
 
 I plan to add ability to launch language server or format given input to this CLI
