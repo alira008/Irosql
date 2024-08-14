@@ -53,6 +53,11 @@ impl Formatter {
             self.formatted_query.push(last_char.unwrap());
         }
 
+        for c in comment_mapper.comments_after_query.iter() {
+            self.print_new_line();
+            self.formatted_query.push_str(format!("-- {}", c.content).as_str());
+        }
+
         Ok(())
     }
 

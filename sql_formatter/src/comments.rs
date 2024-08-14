@@ -11,6 +11,7 @@ pub struct CommentMapper<'a> {
     pub comments: Vec<Comment>,
     pub comment_map_before_line: Vec<(Span, Comment)>,
     pub comment_map_same_line: Vec<(Span, Comment)>,
+    pub comments_after_query: Vec<Comment>,
     pub comment_distances_before_line: HashMap<Comment, Vec<(Span, i64)>>,
     pub comment_distances_same_line: HashMap<Comment, Vec<(Span, i64)>>,
 }
@@ -22,6 +23,7 @@ impl<'a> CommentMapper<'a> {
             comments: comments.to_owned(),
             comment_map_before_line: vec![],
             comment_map_same_line: vec![],
+            comments_after_query: vec![],
             comment_distances_before_line: HashMap::new(),
             comment_distances_same_line: HashMap::new(),
         }
@@ -31,26 +33,28 @@ impl<'a> CommentMapper<'a> {
         self.visit_query(query);
 
         for comment in self.comments.iter() {
+            let mut added_to_same_line = false;
+            let mut added_to_line_before = false;
             if let Some(distances) = &self.comment_distances_same_line.get(comment) {
-                if let Some(min_distance) = distances
-                    .iter()
-                    .min_by(|(_, dx), (_, dy)| dx.cmp(dy))
-                {
+                if let Some(min_distance) = distances.iter().min_by(|(_, dx), (_, dy)| dx.cmp(dy)) {
                     let _ = self
                         .comment_map_same_line
                         .push((min_distance.0, comment.clone()));
+                    added_to_same_line = true;
                 }
             }
 
             if let Some(distances) = &self.comment_distances_before_line.get(comment) {
-                if let Some(min_distance) = distances
-                    .iter()
-                    .min_by(|(_, dx), (_, dy)| dx.cmp(dy))
-                {
+                if let Some(min_distance) = distances.iter().min_by(|(_, dx), (_, dy)| dx.cmp(dy)) {
                     let _ = self
                         .comment_map_before_line
                         .push((min_distance.0, comment.clone()));
+                    added_to_line_before = true;
                 }
+            }
+
+            if !added_to_same_line && !added_to_line_before {
+                self.comments_after_query.push(comment.clone());
             }
         }
     }
