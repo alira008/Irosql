@@ -561,7 +561,6 @@ impl<'a> Parser<'a> {
 
                     Some((name, equal_sign))
                 } else {
-                    self.expect_function_args_start()?;
                     let expr: ast::Expression = tok.try_into()?;
                     params.push(ast::ProcedureParameter {
                         name: None,
@@ -1366,7 +1365,6 @@ impl<'a> Parser<'a> {
                 },
                 _ => return self.parse_error(ParseErrorType::ExpectedDataTypeSize),
             };
-            self.advance();
             let right_paren: Symbol = self.expect_token(&TokenKind::RightParen)?.into();
             Ok(Some(DataTypeSize {
                 left_paren,

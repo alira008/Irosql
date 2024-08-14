@@ -1,5 +1,5 @@
 use sql_lexer::{Lexer, Span};
-use sql_parser::ast::{self, Keyword, KeywordKind};
+use sql_parser::ast::{self, Keyword, KeywordKind, Symbol, SymbolKind};
 use sql_parser::Parser;
 
 #[test]
@@ -38,10 +38,18 @@ fn basic_select_statement_new() {
                     content: "bruhCalculate".to_string(),
                 }),
             ]))),
+            left_paren: Symbol {
+                kind: SymbolKind::LeftParen,
+                location: Span::new(61, 61),
+            },
             args: Some(vec![ast::Expression::Identifier(ast::Literal {
                 location: Span::new(62, 65),
                 content: "bruh".to_string(),
             })]),
+            right_paren: Symbol {
+                kind: SymbolKind::RightParen,
+                location: Span::new(66, 66),
+            },
             over: None,
         }),
     ];
@@ -88,7 +96,6 @@ fn basic_select_statement_reverse_assign_alias() {
 
     assert_eq!(expected_query, query.to_string());
 }
-
 
 #[test]
 fn select_statement_with_builtin_fn() {
