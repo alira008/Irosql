@@ -1,6 +1,6 @@
 use clap::Parser as _;
 use cli::Cli;
-use sql_formatter::{formatter::Formatter, settings::FormatterSettings};
+use formatter::{formatter::Formatter, settings::FormatterSettings};
 
 mod cli;
 

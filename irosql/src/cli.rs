@@ -1,5 +1,5 @@
 use clap::{Parser, Subcommand};
-use sql_formatter::settings::{FormatterSettings, IndentCommaLists, KeywordCase};
+use formatter::settings::{FormatterSettings, IndentCommaLists, KeywordCase};
 
 #[derive(Parser, Debug, Clone)]
 pub struct Format {

@@ -1,7 +1,7 @@
 [workspace]
 resolver = "2"
 
-members = ["sql_formatter", "sql_lsp", "sql_parser", "sql_repl", "sql_lexer", "irosql"]
+members = ["formatter", "language_server", "parser", "repl", "lexer", "irosql"]
 
 [workspace.dependencies]
 tracing = "0.1.40"

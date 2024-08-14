@@ -1,18 +1,24 @@
-# T-SQL Interpreter
+# Irosql
 
-## SQL_LSP
+## Irosql
+
+### Todo
+
+I plan to add ability to launch language server or format given input to this CLI
+
+## Language Server
 
 ### Todo
 
 My Language Server for T-SQL. Thinking about making this work for possibly SSMS
 but also trying to make it work for Neovim
 
-## SQL_PARSER
+## Parser
 
 Parses T-SQL queries and places them into abstract syntax to make it easier for other crates
 make sense of the queries that are given to it
 
-## SQL_Formatter
+## Formatter
 
 Formats T-SQL queries into a standardized readable format. Settings are inspired by 
 [Poor Man's TSQL Formatter](https://github.com/TaoK/PoorMansTSqlFormatter). Right now
