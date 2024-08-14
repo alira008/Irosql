@@ -1,5 +1,3 @@
-use std::ops::Deref;
-
 use crate::comments::CommentMapper;
 use sql_lexer::Span;
 use sql_parser::{
