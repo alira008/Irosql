@@ -222,7 +222,7 @@ impl<'a> TryFrom<Token<'a>> for Keyword {
             TokenKind::Window => KeywordKind::Window,
             TokenKind::With => KeywordKind::With,
             TokenKind::Year => KeywordKind::Year,
-            _ => return parse_error(ParseErrorType::ExpectedKeyword),
+            _ => return parse_error(ParseErrorType::ExpectedKeyword, value.location()),
         };
 
         Ok(Self {
@@ -239,7 +239,7 @@ impl<'a> TryFrom<Option<Token<'a>>> for Keyword {
         if let Some(token) = value {
             Keyword::try_from(token)
         }else{
-            parse_error(ParseErrorType::ExpectedKeyword)
+            parse_error(ParseErrorType::ExpectedKeyword, Span::default())
         }
     }
 }

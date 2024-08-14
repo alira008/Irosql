@@ -5,11 +5,12 @@ pub use token::{Span, Token, TokenKind};
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub struct LexicalError {
     pub error: LexicalErrorType,
+    pub span: Span,
 }
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub enum LexicalErrorType {
-    UnrecognizedToken,
+    UnrecognizedToken { ch: char },
     UnexpectedStringEnd,
     UnexpectedQuotedIdentifierEnd,
 }
@@ -17,10 +18,12 @@ pub enum LexicalErrorType {
 impl LexicalError {
     pub fn details(&self) -> String {
         match &self.error {
-            LexicalErrorType::UnrecognizedToken => "unrecognized token",
-            LexicalErrorType::UnexpectedStringEnd => "unexpected end of string",
-            LexicalErrorType::UnexpectedQuotedIdentifierEnd => "unexpected end of quoted identifier",
-        }.into()
+            LexicalErrorType::UnrecognizedToken { ch } => format!("unrecognized token {}", ch),
+            LexicalErrorType::UnexpectedStringEnd => "unexpected end of string".into(),
+            LexicalErrorType::UnexpectedQuotedIdentifierEnd => {
+                "unexpected end of quoted identifier".into()
+            }
+        }
     }
 }
 
@@ -100,6 +103,10 @@ impl<'a> Lexer<'a> {
 
         Err(LexicalError {
             error: LexicalErrorType::UnexpectedQuotedIdentifierEnd,
+            span: Span {
+                start: start as u32,
+                end: self.current_position as u32,
+            },
         })
     }
 
@@ -122,6 +129,10 @@ impl<'a> Lexer<'a> {
 
         Err(LexicalError {
             error: LexicalErrorType::UnexpectedStringEnd,
+            span: Span {
+                start: start as u32,
+                end: self.current_position as u32,
+            },
         })
     }
 
@@ -249,7 +260,11 @@ impl<'a> Lexer<'a> {
                 _ => {
                     self.read_char();
                     return Err(LexicalError {
-                        error: LexicalErrorType::UnrecognizedToken,
+                        error: LexicalErrorType::UnrecognizedToken { ch },
+                        span: Span {
+                            start: start as u32,
+                            end: self.current_position as u32,
+                        },
                     });
                 }
             },
@@ -268,15 +283,16 @@ impl<'a> Iterator for Lexer<'a> {
     fn next(&mut self) -> Option<Self::Item> {
         let next_token = self.next_lex();
 
-        match next_token {
-            Ok(token) => {
-                if matches!(token.kind_as_ref(), TokenKind::Eof) {
-                    None
-                } else {
-                    Some(next_token)
-                }
-            }
-            Err(_) => Some(next_token),
-        }
+        Some(next_token)
+        // match next_token {
+        //     Ok(token) => {
+        //         if matches!(token.kind_as_ref(), TokenKind::Eof) {
+        //             None
+        //         } else {
+        //             Some(next_token)
+        //         }
+        //     }
+        //     Err(_) => Some(next_token),
+        // }
     }
 }

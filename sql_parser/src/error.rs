@@ -1,8 +1,9 @@
-use sql_lexer::{LexicalError, TokenKind, Span};
+use sql_lexer::{LexicalError, Span, TokenKind};
 
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub struct ParseError<'a> {
     pub error: ParseErrorType<'a>,
+    pub span: Span,
 }
 
 #[derive(Debug, PartialEq, Eq, Clone)]
@@ -19,7 +20,10 @@ pub enum ParseErrorType<'a> {
     EmptyPartitionByClause,
     EmptyOrderByArgs,
     ExpectedDataType,
-    ExpectedFloatPrecision,
+    ExpectedDataTypeSize,
+    ExpectedComparisonOperator,
+    ExpectedArithmeticOperator,
+    ExpectedUnaryOperator,
     ExpectedSubqueryOrExpressionList,
     MissingRowsOrRangeInWindowFrameClause,
     MissingAliasAfterAsKeyword,
@@ -33,11 +37,38 @@ pub enum ParseErrorType<'a> {
     },
 }
 
-pub fn parse_error<T>(error: ParseErrorType) -> Result<T, ParseError> {
-    Err(ParseError { error })
+pub fn parse_error<T>(error: ParseErrorType, span: Span) -> Result<T, ParseError> {
+    Err(ParseError { error, span })
+}
+
+pub fn parse_lexical_error<'a>(error: LexicalError) -> ParseError<'a> {
+    ParseError {
+        error: ParseErrorType::LexerError { error },
+        span: error.span,
+    }
 }
 
 impl<'a> ParseError<'a> {
+    pub fn location(&self, input: &'a str) -> String {
+        let mut line_number: u32 = 1;
+        let mut column_number: u32 = 1;
+
+        for (i, c) in input.char_indices() {
+            if i == self.span.start as usize {
+                break;
+            }
+
+            if c == '\n' {
+                line_number += 1;
+                column_number = 1;
+            } else {
+                column_number += 1;
+            }
+        }
+
+        format!("line: {} col: {}", line_number, column_number)
+    }
+
     pub fn details(&self) -> String {
         match &self.error {
             ParseErrorType::UnexpectedToken { token, expected } => {
@@ -82,17 +113,34 @@ impl<'a> ParseError<'a> {
             ParseErrorType::EmptySelectColumns => "I expected columns to select from table".into(),
             ParseErrorType::EmptyGroupByClause => "I expected a group by clause".into(),
             ParseErrorType::EmptyPartitionByClause => "I expected a partition by clause".into(),
+            ParseErrorType::ExpectedComparisonOperator => "I expected a comparison operator".into(),
+            ParseErrorType::ExpectedArithmeticOperator => "I expected an arithmetic operator".into(),
+            ParseErrorType::ExpectedUnaryOperator => "I expected a unary operator".into(),
             ParseErrorType::EmptyOrderByArgs => "I expected columns to order by".into(),
             ParseErrorType::ExpectedDataType => "I expected a data type".into(),
-            ParseErrorType::ExpectedFloatPrecision => "I expected a float precision".into(),
-            ParseErrorType::ExpectedSubqueryOrExpressionList => "I expected subquery or expression list".into(),
-            ParseErrorType::MissingRowsOrRangeInWindowFrameClause => "I expected rows or range in window frame clause".into(),
-            ParseErrorType::MissingAliasAfterAsKeyword => "I expected an alias after as keyword".into(),
-            ParseErrorType::ExpectedUnboundedPrecedingCurrentRowOrNumberPreceding => "I expected unbounded preceding current row or number preceding".into(),
-            ParseErrorType::ExpectedUnboundedFollowingCurrentRowOrNumberFollowing => "I expected unbounded following current row or number following".into(),
+            ParseErrorType::ExpectedDataTypeSize => "I expected a float precision".into(),
+            ParseErrorType::ExpectedSubqueryOrExpressionList => {
+                "I expected subquery or expression list".into()
+            }
+            ParseErrorType::MissingRowsOrRangeInWindowFrameClause => {
+                "I expected rows or range in window frame clause".into()
+            }
+            ParseErrorType::MissingAliasAfterAsKeyword => {
+                "I expected an alias after as keyword".into()
+            }
+            ParseErrorType::ExpectedUnboundedPrecedingCurrentRowOrNumberPreceding => {
+                "I expected unbounded preceding current row or number preceding".into()
+            }
+            ParseErrorType::ExpectedUnboundedFollowingCurrentRowOrNumberFollowing => {
+                "I expected unbounded following current row or number following".into()
+            }
             ParseErrorType::ExpectedLocalVariable => "I expected a local variable".into(),
-            ParseErrorType::ExpectedObjectToInsertTo => "I expected an object to insert into".into(),
-            ParseErrorType::InvalidOrUnimplementedStatement => "I was not expecting an invalid or a statement that is not implemented yet".into(),
+            ParseErrorType::ExpectedObjectToInsertTo => {
+                "I expected an object to insert into".into()
+            }
+            ParseErrorType::InvalidOrUnimplementedStatement => {
+                "I was not expecting an invalid or a statement that is not implemented yet".into()
+            }
             ParseErrorType::LexerError { error } => error.details(),
         }
     }

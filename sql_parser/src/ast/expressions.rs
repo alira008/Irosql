@@ -268,10 +268,8 @@ impl fmt::Display for ComparisonOperatorKind {
     }
 }
 
-impl<'a> TryFrom<Token<'a>> for ComparisonOperator {
-    type Error = ParseError<'a>;
-
-    fn try_from(value: Token<'a>) -> Result<Self, Self::Error> {
+impl<'a> From<Token<'a>> for ComparisonOperator {
+    fn from(value: Token<'a>) -> Self {
         let kind = match value.kind() {
             TokenKind::Equal => ComparisonOperatorKind::Equal,
             TokenKind::BangEqual => ComparisonOperatorKind::NotEqualBang,
@@ -280,9 +278,9 @@ impl<'a> TryFrom<Token<'a>> for ComparisonOperator {
             TokenKind::GreaterThanEqual => ComparisonOperatorKind::GreaterThanEqual,
             TokenKind::LessThan => ComparisonOperatorKind::LessThan,
             TokenKind::LessThanEqual => ComparisonOperatorKind::LessThanEqual,
-            _ => return parse_error(ParseErrorType::ExpectedKeyword),
+            _ => unreachable!()
         };
-        Ok(Self::new(value.location(), kind))
+        Self::new(value.location(), kind)
     }
 }
 
@@ -291,9 +289,9 @@ impl<'a> TryFrom<Option<Token<'a>>> for ComparisonOperator {
 
     fn try_from(value: Option<Token<'a>>) -> Result<Self, Self::Error> {
         if let Some(token) = value {
-            ComparisonOperator::try_from(token)
+            Ok(token.into())
         } else {
-            unreachable!()
+            parse_error(ParseErrorType::ExpectedComparisonOperator, Span::default())
         }
     }
 }
@@ -322,19 +320,17 @@ impl fmt::Display for ArithmeticOperatorKind {
     }
 }
 
-impl<'a> TryFrom<Token<'a>> for ArithmeticOperator {
-    type Error = ParseError<'a>;
-
-    fn try_from(value: Token<'a>) -> Result<Self, Self::Error> {
+impl<'a> From<Token<'a>> for ArithmeticOperator {
+    fn from(value: Token<'a>) -> Self {
         let kind = match value.kind() {
             TokenKind::Plus => ArithmeticOperatorKind::Plus,
             TokenKind::Minus => ArithmeticOperatorKind::Minus,
             TokenKind::Asterisk => ArithmeticOperatorKind::Multiply,
             TokenKind::ForwardSlash => ArithmeticOperatorKind::Divide,
             TokenKind::PercentSign => ArithmeticOperatorKind::Modulus,
-            _ => return parse_error(ParseErrorType::ExpectedKeyword),
+            _ => unreachable!()
         };
-        Ok(Self::new(value.location(), kind))
+        Self::new(value.location(), kind)
     }
 }
 
@@ -343,9 +339,9 @@ impl<'a> TryFrom<Option<Token<'a>>> for ArithmeticOperator {
 
     fn try_from(value: Option<Token<'a>>) -> Result<Self, Self::Error> {
         if let Some(token) = value {
-            ArithmeticOperator::try_from(token)
+            Ok(token.into())
         } else {
-            unreachable!()
+            parse_error(ParseErrorType::ExpectedArithmeticOperator, Span::default())
         }
     }
 }
@@ -371,16 +367,14 @@ impl fmt::Display for UnaryOperatorKind {
     }
 }
 
-impl<'a> TryFrom<Token<'a>> for UnaryOperator {
-    type Error = ParseError<'a>;
-
-    fn try_from(value: Token<'a>) -> Result<Self, Self::Error> {
+impl<'a> From<Token<'a>> for UnaryOperator {
+    fn from(value: Token<'a>) -> Self {
         let kind = match value.kind() {
             TokenKind::Plus => UnaryOperatorKind::Plus,
             TokenKind::Minus => UnaryOperatorKind::Minus,
-            _ => return parse_error(ParseErrorType::ExpectedKeyword),
+            _ => unreachable!()
         };
-        Ok(Self::new(value.location(), kind))
+        Self::new(value.location(), kind)
     }
 }
 
@@ -389,9 +383,9 @@ impl<'a> TryFrom<Option<Token<'a>>> for UnaryOperator {
 
     fn try_from(value: Option<Token<'a>>) -> Result<Self, Self::Error> {
         if let Some(token) = value {
-            UnaryOperator::try_from(token)
+            Ok(token.into())
         } else {
-            unreachable!()
+            parse_error(ParseErrorType::ExpectedUnaryOperator, Span::default())
         }
     }
 }
@@ -402,19 +396,17 @@ impl Literal {
     }
 }
 
-impl<'a> TryFrom<Token<'a>> for Literal {
-    type Error = ParseError<'a>;
-
-    fn try_from(value: Token<'a>) -> Result<Self, Self::Error> {
+impl<'a> From<Token<'a>> for Literal {
+    fn from(value: Token<'a>) -> Self {
         let content = match value.kind() {
             TokenKind::Identifier(str)
             | TokenKind::QuotedIdentifier(str)
             | TokenKind::NumberLiteral(str)
             | TokenKind::StringLiteral(str)
             | TokenKind::LocalVariable(str) => str.to_string(),
-            _ => return parse_error(ParseErrorType::ExpectedKeyword),
+            _ => unreachable!()
         };
-        Ok(Self::new(value.location(), content))
+        Self::new(value.location(), content)
     }
 }
 
@@ -423,7 +415,7 @@ impl<'a> TryFrom<Option<Token<'a>>> for Literal {
 
     fn try_from(value: Option<Token<'a>>) -> Result<Self, Self::Error> {
         if let Some(token) = value {
-            Literal::try_from(token)
+            Ok(token.into())
         } else {
             unreachable!()
         }
@@ -436,22 +428,19 @@ impl fmt::Display for Literal {
     }
 }
 
-impl<'a> TryFrom<Token<'a>> for Expression {
-    type Error = ParseError<'a>;
-
-    fn try_from(value: Token<'a>) -> Result<Self, Self::Error> {
-        let expr = match value.kind() {
-            TokenKind::Identifier(_) => Expression::Identifier(Literal::try_from(value)?),
+impl<'a> From<Token<'a>> for Expression {
+    fn from(value: Token<'a>) -> Self {
+        match value.kind() {
+            TokenKind::Identifier(_) => Expression::Identifier(value.into()),
             TokenKind::QuotedIdentifier(_) => {
-                Expression::QuotedIdentifier(Literal::try_from(value)?)
+                Expression::QuotedIdentifier(value.into())
             }
-            TokenKind::NumberLiteral(_) => Expression::NumberLiteral(Literal::try_from(value)?),
-            TokenKind::StringLiteral(_) => Expression::StringLiteral(Literal::try_from(value)?),
-            TokenKind::LocalVariable(_) => Expression::LocalVariable(Literal::try_from(value)?),
-            TokenKind::Asterisk => Expression::Asterisk(Symbol::from(value)),
-            _ => return parse_error(ParseErrorType::ExpectedKeyword),
-        };
-        Ok(expr)
+            TokenKind::NumberLiteral(_) => Expression::NumberLiteral(value.into()),
+            TokenKind::StringLiteral(_) => Expression::StringLiteral(value.into()),
+            TokenKind::LocalVariable(_) => Expression::LocalVariable(value.into()),
+            TokenKind::Asterisk => Expression::Asterisk(value.into()),
+            _ => unreachable!(),
+        }
     }
 }
 
@@ -460,7 +449,7 @@ impl<'a> TryFrom<Option<Token<'a>>> for Expression {
 
     fn try_from(value: Option<Token<'a>>) -> Result<Self, Self::Error> {
         if let Some(token) = value {
-            Expression::try_from(token)
+            Ok(token.into())
         } else {
             unreachable!()
         }

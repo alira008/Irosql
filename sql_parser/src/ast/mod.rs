@@ -475,7 +475,7 @@ impl<'a> TryFrom<Token<'a>> for ProcedureParameterName {
     fn try_from(value: Token<'a>) -> Result<Self, Self::Error> {
         let content = match value.kind() {
             TokenKind::LocalVariable(i) => i.to_string(),
-            _ => return parse_error(ParseErrorType::ExpectedLocalVariable),
+            _ => return parse_error(ParseErrorType::ExpectedLocalVariable, value.location()),
         };
         Ok(ProcedureParameterName {
             location: value.location(),

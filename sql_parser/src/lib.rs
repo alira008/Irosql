@@ -12,15 +12,16 @@ use crate::expr_start::{
 };
 use crate::operator::{get_precedence, Precedence};
 use ast::{Comment, DataTypeSize, Symbol};
-use sql_lexer::{Lexer, LexicalError, Token, TokenKind};
+use error::parse_lexical_error;
+use sql_lexer::{Lexer, Span, Token, TokenKind};
 
 #[derive(Debug, Clone)]
 pub struct Parser<'a> {
     lexer: Lexer<'a>,
+    // tokens: Vec<Token<'a>>,
     peek_token: Option<Token<'a>>,
 
     comments: Vec<Comment>,
-    lexer_errors: Vec<LexicalError>,
     parse_errors: Vec<ParseError<'a>>,
 }
 
@@ -30,7 +31,6 @@ impl<'a> Parser<'a> {
             lexer,
             peek_token: None,
             comments: vec![],
-            lexer_errors: vec![],
             parse_errors: vec![],
         };
         parser.advance();
@@ -68,7 +68,7 @@ impl<'a> Parser<'a> {
                             break;
                         }
                     },
-                    Err(e) => self.lexer_errors.push(e),
+                    Err(e) => self.parse_errors.push(parse_lexical_error(e)),
                 },
                 None => {
                     next_tok = None;
@@ -107,6 +107,7 @@ impl<'a> Parser<'a> {
         self.unexpected_token(vec![token_kind.to_string()])
     }
 
+    #[allow(dead_code)]
     fn expect_token_any(&mut self, token_kinds: &[TokenKind]) -> Result<Token<'a>, ParseError<'a>> {
         if self.token_is_any(token_kinds) {
             let tok = self.peek_token.unwrap();
@@ -135,13 +136,25 @@ impl<'a> Parser<'a> {
                 ParseErrorType::UnexpectedToken {
                     token: *t.kind_as_ref(),
                     expected,
-                }
+                },
+                t.location(),
             ),
-            None => parse_error(ParseErrorType::UnexpectedToken {
-                token: TokenKind::Eof,
-                expected,
-            }),
+            None => parse_error(
+                ParseErrorType::UnexpectedToken {
+                    token: TokenKind::Eof,
+                    expected,
+                },
+                Span::default(),
+            ),
         }
+    }
+
+    fn parse_error<T>(&self, parse_error_type: ParseErrorType<'a>) -> Result<T, ParseError<'a>> {
+        let span = match self.peek_token {
+            Some(t) => t.location(),
+            None => Span::default(),
+        };
+        parse_error(parse_error_type, span)
     }
 
     fn expect_function_args_start(&mut self) -> Result<(), ParseError<'a>> {
@@ -291,7 +304,7 @@ impl<'a> Parser<'a> {
     pub fn parse(&mut self) -> ast::Query {
         let mut query = ast::Query::new();
 
-        while self.peek_token.is_some() {
+        while self.peek_token.is_some_and(|t| t.kind() != TokenKind::Eof) {
             match self.parse_statement() {
                 Ok(statement) => query.statements.push(statement),
                 Err(parse_error) => self.parse_errors.push(parse_error),
@@ -415,14 +428,14 @@ impl<'a> Parser<'a> {
                 Ok(object)
             }
         } else {
-            parse_error(ParseErrorType::ExpectedObjectToInsertTo)
+            self.parse_error(ParseErrorType::ExpectedObjectToInsertTo)
         }
     }
 
     fn parse_set_local_variable_statement(&mut self) -> Result<ast::Statement, ParseError<'a>> {
         let set_kw = self.consume_keyword(TokenKind::Set)?;
-        let local_variable =
-            ast::Expression::try_from(self.expect_token(&TokenKind::LocalVariable(""))?)?;
+        let local_variable: ast::Expression =
+            self.expect_token(&TokenKind::LocalVariable(""))?.into();
         let equal_sign: Symbol = self.expect_token(&TokenKind::Equal)?.into();
         let value = self.parse_expression(Precedence::Lowest)?;
         let semicolon: Symbol = self.expect_token(&TokenKind::SemiColon)?.into();
@@ -451,7 +464,7 @@ impl<'a> Parser<'a> {
             };
 
             variables.push(ast::LocalVariable {
-                name: ast::Expression::try_from(local_variable)?,
+                name: local_variable.into(),
                 data_type,
                 value,
             });
@@ -548,7 +561,8 @@ impl<'a> Parser<'a> {
 
                     Some((name, equal_sign))
                 } else {
-                    let expr = ast::Expression::try_from(tok)?;
+                    self.expect_function_args_start()?;
+                    let expr: ast::Expression = tok.try_into()?;
                     params.push(ast::ProcedureParameter {
                         name: None,
                         value: expr,
@@ -675,7 +689,7 @@ impl<'a> Parser<'a> {
                         columns.push(ast::SelectItem::Unnamed(expression));
                     }
                 } else {
-                    return parse_error(ParseErrorType::MissingAliasAfterAsKeyword);
+                    return self.parse_error(ParseErrorType::MissingAliasAfterAsKeyword);
                 }
             }
 
@@ -686,7 +700,7 @@ impl<'a> Parser<'a> {
         }
 
         if columns.is_empty() {
-            return parse_error(ParseErrorType::EmptySelectColumns);
+            return self.parse_error(ParseErrorType::EmptySelectColumns);
         }
 
         Ok(columns)
@@ -739,7 +753,7 @@ impl<'a> Parser<'a> {
         loop {
             self.expect_select_item_start()?;
             if let Some(token) = self.peek_token {
-                let new_expr = ast::Expression::try_from(token)?;
+                let new_expr: ast::Expression = token.into();
                 compound.push(new_expr);
             }
 
@@ -987,7 +1001,7 @@ impl<'a> Parser<'a> {
         }
 
         if args.is_empty() {
-            return parse_error(ParseErrorType::EmptyPartitionByClause);
+            return self.parse_error(ParseErrorType::EmptyPartitionByClause);
         }
 
         Ok(args)
@@ -1025,7 +1039,7 @@ impl<'a> Parser<'a> {
         }
 
         if items.is_empty() {
-            return parse_error(ParseErrorType::EmptyOrderByArgs);
+            return self.parse_error(ParseErrorType::EmptyOrderByArgs);
         }
 
         Ok(items)
@@ -1041,7 +1055,7 @@ impl<'a> Parser<'a> {
             rows_or_range_kw = kw;
             rows_or_range = ast::RowsOrRange::Range;
         } else {
-            return parse_error(ParseErrorType::MissingRowsOrRangeInWindowFrameClause);
+            return self.parse_error(ParseErrorType::MissingRowsOrRangeInWindowFrameClause);
         }
 
         let between_kw = self.maybe_keyword(TokenKind::Between);
@@ -1062,7 +1076,7 @@ impl<'a> Parser<'a> {
             start_bound_keywords = vec![preceding_kw];
             window_frame_bound_start = ast::WindowFrameBound::Preceding(expr);
         } else {
-            return parse_error(
+            return self.parse_error(
                 ParseErrorType::ExpectedUnboundedPrecedingCurrentRowOrNumberPreceding,
             );
         }
@@ -1098,7 +1112,7 @@ impl<'a> Parser<'a> {
             end_bound_keywords = vec![following_kw];
             window_frame_bound_end = ast::WindowFrameBound::Preceding(expr);
         } else {
-            return parse_error(
+            return self.parse_error(
                 ParseErrorType::ExpectedUnboundedFollowingCurrentRowOrNumberFollowing,
             );
         }
@@ -1132,7 +1146,7 @@ impl<'a> Parser<'a> {
         }
 
         if expressions.is_empty() {
-            return parse_error(ParseErrorType::EmptyGroupByClause);
+            return self.parse_error(ParseErrorType::EmptyGroupByClause);
         }
 
         Ok(ast::GroupByClause {
@@ -1327,7 +1341,7 @@ impl<'a> Parser<'a> {
             let data_type_size = self.parse_data_type_size()?;
             ast::DataType::Varchar(keyword, data_type_size)
         } else {
-            return parse_error(ParseErrorType::ExpectedDataType);
+            return self.parse_error(ParseErrorType::ExpectedDataType);
         };
 
         Ok(data_type)
@@ -1336,16 +1350,13 @@ impl<'a> Parser<'a> {
     fn parse_data_type_size(&mut self) -> Result<Option<DataTypeSize>, ParseError<'a>> {
         if self.token_is(&TokenKind::LeftParen) {
             let left_paren: Symbol = self.expect_token(&TokenKind::LeftParen)?.into();
-            let numeric_literal = match self.peek_token {
-                Some(token) => ast::Expression::try_from(token)?,
-                _ => unreachable!(),
-            };
+            let numeric_literal = self.expect_token(&TokenKind::NumberLiteral(""))?.into();
             let size: u32 = match numeric_literal {
                 ast::Expression::NumberLiteral(n) => match n.content.parse() {
                     Ok(n) => n,
-                    Err(_) => return parse_error(ParseErrorType::ExpectedFloatPrecision),
+                    Err(_) => return self.parse_error(ParseErrorType::ExpectedDataTypeSize),
                 },
-                _ => return parse_error(ParseErrorType::ExpectedFloatPrecision),
+                _ => return self.parse_error(ParseErrorType::ExpectedDataTypeSize),
             };
             self.advance();
             let right_paren: Symbol = self.expect_token(&TokenKind::RightParen)?.into();
@@ -1360,16 +1371,14 @@ impl<'a> Parser<'a> {
     }
 
     fn parse_float_precision(&mut self) -> Result<u32, ParseError<'a>> {
-        let numeric_literal = match self.peek_token {
-            Some(token) => ast::Expression::try_from(token)?,
-            _ => unreachable!(),
-        };
+        let numeric_literal: ast::Expression =
+            self.expect_token(&TokenKind::NumberLiteral(""))?.into();
         let size: u32 = match numeric_literal {
             ast::Expression::NumberLiteral(n) => match n.content.parse() {
                 Ok(n) => n,
-                Err(_) => return parse_error(ParseErrorType::ExpectedFloatPrecision),
+                Err(_) => return self.parse_error(ParseErrorType::ExpectedDataTypeSize),
             },
-            _ => return parse_error(ParseErrorType::ExpectedFloatPrecision),
+            _ => return self.parse_error(ParseErrorType::ExpectedDataTypeSize),
         };
         Ok(size)
     }
@@ -1400,16 +1409,14 @@ impl<'a> Parser<'a> {
     }
 
     fn parse_numeric_scale(&mut self) -> Result<u32, ParseError<'a>> {
-        let numeric_literal = match self.peek_token {
-            Some(token) => ast::Expression::try_from(token)?,
-            _ => unreachable!(),
-        };
+        let numeric_literal: ast::Expression =
+            self.expect_token(&TokenKind::NumberLiteral(""))?.into();
         let size: u32 = match numeric_literal {
             ast::Expression::NumberLiteral(n) => match n.content.parse() {
                 Ok(n) => n,
-                Err(_) => return parse_error(ParseErrorType::ExpectedFloatPrecision),
+                Err(_) => return self.parse_error(ParseErrorType::ExpectedDataTypeSize),
             },
-            _ => return parse_error(ParseErrorType::ExpectedFloatPrecision),
+            _ => return self.parse_error(ParseErrorType::ExpectedDataTypeSize),
         };
 
         Ok(size)
@@ -1477,7 +1484,7 @@ impl<'a> Parser<'a> {
                 right_paren,
             }
         } else {
-            return parse_error(ParseErrorType::ExpectedSubqueryOrExpressionList);
+            return self.parse_error(ParseErrorType::ExpectedSubqueryOrExpressionList);
         };
 
         Ok(expr)
@@ -1776,7 +1783,7 @@ impl<'a> Parser<'a> {
             } else if let Some(like_kw) = self.maybe_keyword(TokenKind::Like) {
                 return Ok(self.parse_like_expression(left, Some(not_kw), like_kw)?);
             } else {
-                return parse_error(ParseErrorType::ExpectedSubqueryOrExpressionList);
+                return self.parse_error(ParseErrorType::ExpectedSubqueryOrExpressionList);
             }
         }
 

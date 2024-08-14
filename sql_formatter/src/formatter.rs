@@ -38,7 +38,7 @@ impl Formatter {
             if i > 0 {
                 error_string.push('\n');
             }
-            error_string.push_str(format!("{}", err.details()).as_str());
+            error_string.push_str(format!("[{}]: {}", err.location(input), err.details()).as_str());
         }
         if !error_string.is_empty() {
             return Err(error_string);
