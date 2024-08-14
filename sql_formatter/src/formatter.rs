@@ -1036,4 +1036,97 @@ impl Visitor for Formatter {
             }
         }
     }
+
+    fn visit_function_over_clause(
+        &mut self,
+        over_clause: &sql_parser::ast::OverClause,
+    ) -> Self::Result {
+        self.visit_keyword(&over_clause.over_kw);
+        self.visit_symbol(&over_clause.left_paren);
+        if let Some(kws) = &over_clause.partition_by_kws {
+            for (i, kw) in kws.iter().enumerate() {
+                if i > 0 {
+                    self.print_space();
+                }
+                self.visit_keyword(kw);
+            }
+            self.print_space();
+            for (i, e) in over_clause.partition_by.iter().enumerate() {
+                if i > 0 {
+                    self.formatted_query += ", "
+                }
+                self.visit_expression(e);
+            }
+            self.print_space();
+        }
+        if let Some(kws) = &over_clause.order_by_kws {
+            for (i, kw) in kws.iter().enumerate() {
+                if i > 0 {
+                    self.print_space();
+                }
+                self.visit_keyword(kw);
+            }
+            self.print_space();
+            for (i, o) in over_clause.order_by.iter().enumerate() {
+                if i > 0 {
+                    self.formatted_query += ", "
+                }
+                self.visit_order_by_arg(o);
+            }
+            self.print_space();
+        }
+        if let Some(window_frame) = &over_clause.window_frame {
+            self.visit_function_over_clause_window_frame(window_frame);
+        }
+        self.visit_symbol(&over_clause.right_paren);
+    }
+
+    fn visit_function_over_clause_window_frame(
+        &mut self,
+        window_frame: &sql_parser::ast::WindowFrame,
+    ) -> Self::Result {
+        self.visit_keyword(&window_frame.rows_or_range_kw);
+        self.print_space();
+        if let Some(kw) = &window_frame.between_kw {
+            self.visit_keyword(kw);
+            self.print_space();
+        }
+        match &window_frame.start {
+            sql_parser::ast::WindowFrameBound::Preceding(e)
+            | sql_parser::ast::WindowFrameBound::Following(e) => {
+                self.visit_expression(e);
+                self.print_space();
+            }
+            _ => {}
+        }
+        for (i, kw) in window_frame.start_bound_keywords.iter().enumerate() {
+            if i > 0 {
+                self.print_space();
+            }
+            self.visit_keyword(kw);
+        }
+        if let Some(kw) = &window_frame.and_kw {
+            self.print_space();
+            self.visit_keyword(kw);
+            self.print_space();
+        }
+        if let Some(end) = &window_frame.end {
+            match end {
+                sql_parser::ast::WindowFrameBound::Preceding(e)
+                | sql_parser::ast::WindowFrameBound::Following(e) => {
+                    self.visit_expression(e);
+                    self.print_space();
+                }
+                _ => {}
+            }
+        }
+        if let Some(kws) = &window_frame.end_bound_keywords {
+            for (i, kw) in kws.iter().enumerate() {
+                if i > 0 {
+                    self.print_space();
+                }
+                self.visit_keyword(kw);
+            }
+        }
+    }
 }
