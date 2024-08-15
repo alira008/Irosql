@@ -1,7 +1,5 @@
 # Irosql
 
-## Irosql
-
 ### Todo
 
 I plan to add ability to launch language server or format given input to this CLI
@@ -27,7 +25,7 @@ Errors are returned in stderr.
 
 ### Example run 
 
-`sql_formatter -k upper -b -i 'select top 50 percent LastPrice, HighPrice, LowPrice, QuoteTime from Market mt where QuoteTime > '\''6:30'\'' and PercentChange > 0 oRDer By Symbol'`
+`formatter -k upper -b -i 'select top 50 percent LastPrice, HighPrice, LowPrice, QuoteTime from Market mt where QuoteTime > '\''6:30'\'' and PercentChange > 0 oRDer By Symbol'`
 
 ### Output
 
@@ -45,7 +43,7 @@ ORDER BY Symbol
 ### Help
 
 ```
-Usage: sql_formatter [OPTIONS] <INPUT>
+Usage: formatter [OPTIONS] <INPUT>
 
 Arguments:
   <INPUT>
