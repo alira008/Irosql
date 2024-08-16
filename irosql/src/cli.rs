@@ -24,6 +24,8 @@ pub struct Format {
 pub enum Command {
     #[command(name = "format", about = "Formats T-SQL code in opionated style")]
     Format(Format),
+    #[command(name = "lsp", about = "Language server that provides basic features like autocompletion")]
+    Lsp
 }
 
 #[derive(Parser, Debug, Clone)]

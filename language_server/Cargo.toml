@@ -11,5 +11,8 @@ tower-lsp = "0.20.0"
 tokio = { version = "1.39.2", features = ["io-std", "rt", "macros"] }
 dashmap = { version = "6.0.1", features = ["serde"] }
 ropey = "1.6.1"
+config = "0.14.0"
+dirs = "5.0.1"
+serde = "1.0.208"
 parser = { path = "../parser" }
 lexer = { path = "../lexer" }

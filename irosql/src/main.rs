@@ -18,5 +18,8 @@ fn main() {
 
             println!("{}", formatter.formatted_query());
         }
+        cli::Command::Lsp => {
+            language_server::launch();
+        }
     }
 }

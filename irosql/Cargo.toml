@@ -10,3 +10,4 @@ clap = { version = "4.4.18", features = ["derive"] }
 parser = { path = "../parser" }
 lexer = { path = "../lexer" }
 formatter = { path = "../formatter" }
+language_server = { path = "../language_server" }

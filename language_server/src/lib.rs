@@ -1,8 +1,32 @@
 use dashmap::DashMap;
 use ropey::Rope;
-use tower_lsp::jsonrpc::Result;
-use tower_lsp::lsp_types::*;
-use tower_lsp::{Client, LanguageServer, LspService, Server};
+use tower_lsp::jsonrpc;
+use tower_lsp::{lsp_types::*, LspService, Server};
+use tower_lsp::{Client, LanguageServer};
+
+mod config;
+mod database;
+
+pub fn launch() -> Result<(), String> {
+    let stdin = tokio::io::stdin();
+    let stdout = tokio::io::stdout();
+    let config = config::get().ok_or_else(|| "Could not load config for sql server".to_string());
+
+    let (service, socket) = LspService::new(|client| Backend {
+        client,
+        ast_map: DashMap::default(),
+        document_map: DashMap::default(),
+    });
+    tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .unwrap()
+        .block_on(async {
+            Server::new(stdin, stdout, socket).serve(service).await;
+        });
+
+    Ok(())
+}
 
 #[derive(Debug)]
 struct Backend {
@@ -13,7 +37,7 @@ struct Backend {
 
 #[tower_lsp::async_trait]
 impl LanguageServer for Backend {
-    async fn initialize(&self, _: InitializeParams) -> Result<InitializeResult> {
+    async fn initialize(&self, _: InitializeParams) -> jsonrpc::Result<InitializeResult> {
         Ok(InitializeResult::default())
     }
 
@@ -23,7 +47,7 @@ impl LanguageServer for Backend {
             .await;
     }
 
-    async fn shutdown(&self) -> Result<()> {
+    async fn shutdown(&self) -> jsonrpc::Result<()> {
         Ok(())
     }
 
@@ -42,14 +66,17 @@ impl LanguageServer for Backend {
             .await;
     }
 
-    async fn completion(&self, params: CompletionParams) -> Result<Option<CompletionResponse>> {
+    async fn completion(
+        &self,
+        params: CompletionParams,
+    ) -> jsonrpc::Result<Option<CompletionResponse>> {
         let uri = params.text_document_position.text_document.uri;
         let position = params.text_document_position.position;
-        let completions = || -> Option<Vec<CompletionItem>> {
+        let _completions = || -> Option<Vec<CompletionItem>> {
             let rope = self.document_map.get(uri.as_str())?;
-            let ast = self.ast_map.get(uri.as_str())?;
+            let _ast = self.ast_map.get(uri.as_str())?;
             let char = rope.try_line_to_char(position.line as usize).ok()?;
-            let offset = char + position.character as usize;
+            let _offset = char + position.character as usize;
             None
         };
 
@@ -103,23 +130,4 @@ fn offset_to_position(offset: usize, rope: &Rope) -> Option<Position> {
     let first_char_of_line = rope.try_line_to_char(line).ok()?;
     let column = offset - first_char_of_line;
     Some(Position::new(line as u32, column as u32))
-}
-
-fn main() {
-    let stdin = tokio::io::stdin();
-    let stdout = tokio::io::stdout();
-
-    let (service, socket) = LspService::new(|client| Backend {
-        client,
-        ast_map: DashMap::default(),
-        document_map: DashMap::default(),
-    });
-    tokio::runtime::Builder::new_current_thread()
-        .enable_all()
-        .build()
-        .unwrap()
-        .block_on(async {
-            println!("hello world");
-            Server::new(stdin, stdout, socket).serve(service).await;
-        });
 }
