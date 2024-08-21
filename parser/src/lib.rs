@@ -323,7 +323,26 @@ impl<'a> Parser<'a> {
         match self.peek_token {
             Some(maybe_token) => match maybe_token.kind_as_ref() {
                 TokenKind::Select => {
-                    return Ok(ast::Statement::Select(self.parse_select_statement()?))
+                    let select_statement = self.parse_select_statement()?;
+                    if self.token_is(&TokenKind::Union) {
+                        let mut unions = vec![];
+                        while self.token_is(&TokenKind::Union) {
+                            let union_kw = self.consume_keyword(TokenKind::Union)?;
+                            let all_kw = self.maybe_keyword(TokenKind::All);
+                            let select = self.parse_select_statement()?;
+                            unions.push(ast::Union {
+                                union_kw,
+                                all_kw,
+                                select,
+                            });
+                        }
+                        return Ok(ast::Statement::Union {
+                            select: select_statement,
+                            unions,
+                        });
+                    } else {
+                        return Ok(ast::Statement::Select(select_statement));
+                    }
                 }
                 TokenKind::Insert => return self.parse_insert_statement(),
 

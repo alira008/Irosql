@@ -187,13 +187,51 @@ fn basic_select_statement_five() -> Result<(), String> {
     let mut formatter = Formatter::new(formatter_settings);
 
     let input = r"SELECT LastPrice, PC as 'PercentChange'
-	from MarketTable mkt select * from PotatoTable";
+	from MarketTable mkt; select * from PotatoTable";
+    let expected = r"select
+    LastPrice
+    ,PC as 'PercentChange'
+from MarketTable mkt;
+
+select *
+from PotatoTable";
+    formatter.format(input)?;
+
+    let formatted_query = formatter.formatted_query();
+    assert_eq!(expected, formatted_query);
+
+    Ok(())
+}
+
+#[test]
+fn basic_select_statement_with_unions() -> Result<(), String> {
+    let formatter_settings = FormatterSettings {
+        indent_comma_lists: None,
+        indent_in_lists: true,
+        indent_between_conditions: true,
+        keyword_case: KeywordCase::Lower,
+        max_width: 80,
+        indent_width: 4,
+        use_tab: false,
+    };
+    let mut formatter = Formatter::new(formatter_settings);
+
+    let input = r"SELECT LastPrice, PC as 'PercentChange'
+	from MarketTable mkt union all select * from PotatoTable
+    union all select potato from PotatoTable";
     let expected = r"select
     LastPrice
     ,PC as 'PercentChange'
 from MarketTable mkt
 
+union all
+
 select *
+from PotatoTable
+
+union all
+
+select potato
 from PotatoTable";
     formatter.format(input)?;
 

@@ -118,6 +118,17 @@ pub enum Statement {
         procedure_name: Expression,
         parameters: Vec<ProcedureParameter>,
     },
+    Union {
+        select: SelectStatement,
+        unions: Vec<Union>,
+    },
+}
+
+#[derive(Debug, PartialEq, Clone)]
+pub struct Union {
+    pub union_kw: Keyword,
+    pub all_kw: Option<Keyword>,
+    pub select: SelectStatement,
 }
 
 #[derive(Debug, PartialEq, Clone)]
@@ -416,11 +427,7 @@ impl fmt::Display for Statement {
                 name,
                 equal_sign,
                 value,
-            } => write!(
-                f,
-                "{} {} {} {}",
-                set_kw, name, equal_sign, value
-            ),
+            } => write!(f, "{} {} {} {}", set_kw, name, equal_sign, value),
             Statement::Execute {
                 exec_kw,
                 procedure_name,
@@ -432,7 +439,25 @@ impl fmt::Display for Statement {
             Statement::Insert(insert) => write!(f, "{}", insert),
             Statement::Update(update) => write!(f, "{}", update),
             Statement::Delete(delete) => write!(f, "{}", delete),
+            Statement::Union { select, unions } => {
+                write!(f, "{}", select)?;
+                for union in unions.iter() {
+                    write!(f, "\n{}", union)?;
+                }
+
+                Ok(())
+            }
         }
+    }
+}
+
+impl fmt::Display for Union {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}", self.union_kw)?;
+        if let Some(kw) = &self.all_kw {
+            write!(f, " {}", kw)?;
+        }
+        write!(f, "{}", self.select)
     }
 }
 

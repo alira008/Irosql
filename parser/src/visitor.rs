@@ -8,7 +8,7 @@ use crate::ast::{
     NextOrFirst, NumericSize, OffsetArg, OffsetFetchClause, OrderByArg, OrderByClause, OverClause,
     ProcedureParameter, ProcedureParameterName, Query, RowOrRows, RowsOrRange, SelectItem,
     SelectStatement, Statement, Symbol, SymbolKind, TableArg, TableSource, Top, UnaryOperator,
-    UnaryOperatorKind, WhereClause, WindowFrame, WindowFrameBound,
+    UnaryOperatorKind, Union, WhereClause, WindowFrame, WindowFrameBound,
 };
 
 pub trait Visitor: Sized {
@@ -25,6 +25,9 @@ pub trait Visitor: Sized {
     }
     fn visit_insert_statement(&mut self, stmt: &InsertStatement) -> Self::Result {
         walk_insert_statement(self, stmt)
+    }
+    fn visit_union(&mut self, union: &Union) -> Self::Result {
+        walk_union(self, union)
     }
     fn visit_select_statement(&mut self, stmt: &SelectStatement) -> Self::Result {
         walk_select_statement(self, stmt)
@@ -461,6 +464,12 @@ pub fn walk_expression<V: Visitor>(visitor: &mut V, expression: &Expression) -> 
     }
 }
 
+pub fn walk_union<V: Visitor>(visitor: &mut V, union: &Union) -> V::Result {
+    visitor.visit_keyword(&union.union_kw);
+    walk_opt!(visitor, visit_keyword, &union.all_kw);
+    visitor.visit_select_statement(&union.select)
+}
+
 pub fn walk_statement<V: Visitor>(visitor: &mut V, stmt: &Statement) -> V::Result {
     match stmt {
         Statement::Select(s) => visitor.visit_select_statement(s),
@@ -507,6 +516,11 @@ pub fn walk_statement<V: Visitor>(visitor: &mut V, stmt: &Statement) -> V::Resul
                 visit_execute_statement_procedure_parameter,
                 parameters
             );
+            V::Result::output()
+        }
+        Statement::Union { select, unions } => {
+            visitor.visit_select_statement(select);
+            walk_list!(visitor, visit_union, unions);
             V::Result::output()
         }
     }

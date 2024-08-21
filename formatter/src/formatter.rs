@@ -268,10 +268,7 @@ impl Visitor for Formatter {
         self.formatted_query += kind.to_string().as_str();
     }
 
-    fn visit_unary_operator_kind(
-        &mut self,
-        kind: parser::ast::UnaryOperatorKind,
-    ) -> Self::Result {
+    fn visit_unary_operator_kind(&mut self, kind: parser::ast::UnaryOperatorKind) -> Self::Result {
         self.formatted_query += kind.to_string().as_str();
     }
 
@@ -296,10 +293,7 @@ impl Visitor for Formatter {
         self.visit_symbol(&ns.right_paren);
     }
 
-    fn visit_data_type_size(
-        &mut self,
-        data_type_size: &parser::ast::DataTypeSize,
-    ) -> Self::Result {
+    fn visit_data_type_size(&mut self, data_type_size: &parser::ast::DataTypeSize) -> Self::Result {
         self.visit_symbol(&data_type_size.left_paren);
         self.formatted_query += data_type_size.size.to_string().as_str();
         self.visit_symbol(&data_type_size.right_paren);
@@ -401,7 +395,26 @@ impl Visitor for Formatter {
                     self.visit_execute_statement_procedure_parameter(p);
                 }
             }
+            parser::ast::Statement::Union { select, unions } => {
+                self.visit_select_statement(select);
+                for union in unions.iter() {
+                    self.print_new_line();
+                    self.print_new_line();
+                    self.visit_union(union);
+                }
+            }
         }
+    }
+
+    fn visit_union(&mut self, union: &parser::ast::Union) -> Self::Result {
+        self.visit_keyword(&union.union_kw);
+        if let Some(kw) = union.all_kw {
+            self.print_space();
+            self.visit_keyword(&kw);
+        }
+        self.print_new_line();
+        self.print_new_line();
+        self.visit_select_statement(&union.select);
     }
 
     fn visit_common_table_expression(
@@ -915,10 +928,7 @@ impl Visitor for Formatter {
         self.decrease_indent();
     }
 
-    fn visit_having_clause(
-        &mut self,
-        having_clause: &parser::ast::HavingClause,
-    ) -> Self::Result {
+    fn visit_having_clause(&mut self, having_clause: &parser::ast::HavingClause) -> Self::Result {
         self.increase_indent();
         self.visit_keyword(&having_clause.having_kw);
         self.print_space();
