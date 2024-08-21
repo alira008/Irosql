@@ -310,7 +310,8 @@ impl<'a> Parser<'a> {
                     self.parse_errors.push(e);
                 }
             }
-            match self.parse_statement() {
+            let token = self.peek_token.unwrap();
+            match self.parse_statement(token) {
                 Ok(statement) => query.statements.push(statement),
                 Err(parse_error) => self.parse_errors.push(parse_error),
             }
@@ -319,59 +320,58 @@ impl<'a> Parser<'a> {
         query
     }
 
-    fn parse_statement(&mut self) -> Result<ast::Statement, ParseError<'a>> {
-        match self.peek_token {
-            Some(maybe_token) => match maybe_token.kind_as_ref() {
-                TokenKind::Select => {
-                    let select_statement = self.parse_select_statement()?;
-                    if self.token_is(&TokenKind::Union) {
-                        let mut unions = vec![];
-                        while self.token_is(&TokenKind::Union) {
-                            let union_kw = self.consume_keyword(TokenKind::Union)?;
-                            let all_kw = self.maybe_keyword(TokenKind::All);
-                            let select = self.parse_select_statement()?;
-                            unions.push(ast::Union {
-                                union_kw,
-                                all_kw,
-                                select,
-                            });
-                        }
-                        return Ok(ast::Statement::Union {
-                            select: select_statement,
-                            unions,
+    fn parse_statement(&mut self, token: Token<'a>) -> Result<ast::Statement, ParseError<'a>> {
+        let statement = match token.kind_as_ref() {
+            TokenKind::Select => {
+                let select_statement = self.parse_select_statement()?;
+                if self.token_is(&TokenKind::Union) {
+                    let mut unions = vec![];
+                    while self.token_is(&TokenKind::Union) {
+                        let union_kw = self.consume_keyword(TokenKind::Union)?;
+                        let all_kw = self.maybe_keyword(TokenKind::All);
+                        let select = self.parse_select_statement()?;
+                        unions.push(ast::Union {
+                            union_kw,
+                            all_kw,
+                            select,
                         });
-                    } else {
-                        return Ok(ast::Statement::Select(select_statement));
                     }
+                    ast::Statement::Union {
+                        select: select_statement,
+                        unions,
+                    }
+                } else {
+                    ast::Statement::Select(select_statement)
                 }
-                TokenKind::Insert => return self.parse_insert_statement(),
+            }
+            TokenKind::Insert => self.parse_insert_statement()?,
 
-                // TokenKind::Update => {
-                //     return Ok(ast::Statement::Update(self.parse_update_statement()?))
-                // }
-                // TokenKind::Delete => {
-                //     return Ok(ast::Statement::Delete(self.parse_delete_statement()?))
-                // }
-                TokenKind::With => return self.parse_cte_statement(),
-                TokenKind::Declare => return self.parse_declare_statement(),
-                TokenKind::Set => return self.parse_set_local_variable_statement(),
-                TokenKind::Exec | TokenKind::Execute => return self.parse_execute_statement(),
-                _ => {
-                    let err = self.unexpected_token(vec![
-                        TokenKind::Select.to_string(),
-                        TokenKind::Insert.to_string(),
-                        TokenKind::With.to_string(),
-                        TokenKind::Declare.to_string(),
-                        TokenKind::Set.to_string(),
-                        TokenKind::Exec.to_string(),
-                        TokenKind::Execute.to_string(),
-                    ]);
-                    self.advance();
-                    return err;
-                }
-            },
-            None => todo!(),
-        }
+            // TokenKind::Update => {
+            //     return Ok(ast::Statement::Update(self.parse_update_statement()?))
+            // }
+            // TokenKind::Delete => {
+            //     return Ok(ast::Statement::Delete(self.parse_delete_statement()?))
+            // }
+            TokenKind::With =>  self.parse_cte_statement()?,
+            TokenKind::Declare => self.parse_declare_statement()?,
+            TokenKind::Set =>  self.parse_set_local_variable_statement()?,
+            TokenKind::Exec | TokenKind::Execute => self.parse_execute_statement()?,
+            _ => {
+                let err = self.unexpected_token(vec![
+                    TokenKind::Select.to_string(),
+                    TokenKind::Insert.to_string(),
+                    TokenKind::With.to_string(),
+                    TokenKind::Declare.to_string(),
+                    TokenKind::Set.to_string(),
+                    TokenKind::Exec.to_string(),
+                    TokenKind::Execute.to_string(),
+                ]);
+                self.advance();
+                return err;
+            }
+        };
+
+        Ok(statement)
     }
 
     fn parse_insert_statement(&mut self) -> Result<ast::Statement, ParseError<'a>> {
