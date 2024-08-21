@@ -15,18 +15,18 @@ fn basic_local_variables() -> Result<(), String> {
     };
     let mut formatter = Formatter::new(formatter_settings);
 
-    let input = r"exec usp_potato @param1 = 'heloo', 'yes' execute usp_dos 'no', @pa = @helovar
+    let input = r"exec usp_potato @param1 = 'heloo', 'yes'; execute usp_dos 'no', @pa = @helovar;
     Declare @hello varchar(255) = 'yessir', @testVar float = 532453.3515, @TestDos Date;
-    SET @TestDos = cast(getdate() as date);";
-    let expected = r"exec usp_potato @param1 = 'heloo', 'yes'
+    SET @TestDos = cast(getdate() as date)";
+    let expected = r"exec usp_potato @param1 = 'heloo', 'yes';
 
-execute usp_dos 'no', @pa = @helovar
+execute usp_dos 'no', @pa = @helovar;
 
 declare @hello varchar(255) = 'yessir'
     ,@testVar float = 532453.3515
     ,@TestDos date;
 
-set @TestDos = cast(getdate() as date);";
+set @TestDos = cast(getdate() as date)";
     formatter.format(input)?;
 
     let formatted_query = formatter.formatted_query();
