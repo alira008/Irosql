@@ -106,14 +106,12 @@ pub enum Statement {
     Declare {
         declare_kw: Keyword,
         variables: Vec<LocalVariable>,
-        semicolon: Symbol,
     },
     SetLocalVariable {
         set_kw: Keyword,
         name: Expression,
         equal_sign: Symbol,
         value: Expression,
-        semicolon: Symbol,
     },
     Execute {
         exec_kw: Keyword,
@@ -409,22 +407,19 @@ impl fmt::Display for Statement {
             Statement::Declare {
                 declare_kw,
                 variables,
-                semicolon,
             } => {
                 write!(f, "{} ", declare_kw)?;
-                display_list_comma_separated(variables, f)?;
-                write!(f, "{}", semicolon)
+                display_list_comma_separated(variables, f)
             }
             Statement::SetLocalVariable {
                 set_kw,
                 name,
                 equal_sign,
                 value,
-                semicolon,
             } => write!(
                 f,
-                "{} {} {} {}{}",
-                set_kw, name, equal_sign, value, semicolon
+                "{} {} {} {}",
+                set_kw, name, equal_sign, value
             ),
             Statement::Execute {
                 exec_kw,

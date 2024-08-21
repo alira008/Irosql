@@ -305,6 +305,11 @@ impl<'a> Parser<'a> {
         let mut query = ast::Query::new();
 
         while self.peek_token.is_some_and(|t| t.kind() != TokenKind::Eof) {
+            if !query.statements.is_empty() {
+                if let Err(e) = self.expect_token(&TokenKind::SemiColon) {
+                    self.parse_errors.push(e);
+                }
+            }
             match self.parse_statement() {
                 Ok(statement) => query.statements.push(statement),
                 Err(parse_error) => self.parse_errors.push(parse_error),
@@ -438,14 +443,12 @@ impl<'a> Parser<'a> {
             self.expect_token(&TokenKind::LocalVariable(""))?.into();
         let equal_sign: Symbol = self.expect_token(&TokenKind::Equal)?.into();
         let value = self.parse_expression(Precedence::Lowest)?;
-        let semicolon: Symbol = self.expect_token(&TokenKind::SemiColon)?.into();
 
         Ok(ast::Statement::SetLocalVariable {
             set_kw,
             name: local_variable,
             equal_sign,
             value,
-            semicolon,
         })
     }
 
@@ -473,12 +476,10 @@ impl<'a> Parser<'a> {
             }
             self.advance();
         }
-        let semicolon: Symbol = self.expect_token(&TokenKind::SemiColon)?.into();
 
         Ok(ast::Statement::Declare {
             declare_kw,
             variables,
-            semicolon,
         })
     }
 

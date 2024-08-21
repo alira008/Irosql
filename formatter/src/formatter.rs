@@ -278,6 +278,7 @@ impl Visitor for Formatter {
     fn visit_query(&mut self, query: &parser::ast::Query) -> Self::Result {
         for (i, s) in query.statements.iter().enumerate() {
             if i > 0 {
+                self.formatted_query.push(';');
                 self.print_new_line();
                 self.print_new_line();
             }
@@ -358,7 +359,6 @@ impl Visitor for Formatter {
             parser::ast::Statement::Declare {
                 declare_kw,
                 variables,
-                semicolon,
             } => {
                 self.visit_keyword(declare_kw);
                 self.print_space();
@@ -370,14 +370,12 @@ impl Visitor for Formatter {
                     self.visit_local_variable(var);
                 }
                 self.decrease_indent();
-                self.visit_symbol(semicolon);
             }
             parser::ast::Statement::SetLocalVariable {
                 set_kw,
                 name,
                 equal_sign,
                 value,
-                semicolon,
             } => {
                 self.visit_keyword(set_kw);
                 self.print_space();
@@ -386,7 +384,6 @@ impl Visitor for Formatter {
                 self.visit_symbol(equal_sign);
                 self.print_space();
                 self.visit_expression(value);
-                self.visit_symbol(semicolon);
             }
             parser::ast::Statement::Execute {
                 exec_kw,

@@ -479,11 +479,9 @@ pub fn walk_statement<V: Visitor>(visitor: &mut V, stmt: &Statement) -> V::Resul
         Statement::Declare {
             declare_kw,
             variables,
-            semicolon,
         } => {
             visitor.visit_keyword(declare_kw);
             walk_list!(visitor, visit_local_variable, variables);
-            visitor.visit_symbol(semicolon);
             V::Result::output()
         }
         Statement::SetLocalVariable {
@@ -491,13 +489,11 @@ pub fn walk_statement<V: Visitor>(visitor: &mut V, stmt: &Statement) -> V::Resul
             name,
             equal_sign,
             value,
-            semicolon,
         } => {
             visitor.visit_keyword(set_kw);
             visitor.visit_expression(name);
             visitor.visit_symbol(equal_sign);
-            visitor.visit_expression(value);
-            visitor.visit_symbol(semicolon)
+            visitor.visit_expression(value)
         }
         Statement::Execute {
             exec_kw,
